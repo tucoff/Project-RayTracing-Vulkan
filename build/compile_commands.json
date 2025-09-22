@@ -1,20 +1,20 @@
 [
 {
-  "directory": "/run/media/tucoff/Arquivos/Projects/Project-Game-Vulkan1/build",
-  "command": "/usr/bin/c++ -DVK_ENABLE_VALIDATION_LAYERS -DVK_USE_PLATFORM_XCB_KHR -D_DEBUG -I/run/media/tucoff/Arquivos/Projects/Project-Game-Vulkan1/src -g -std=c++17 -Wall -Wextra -Wpedantic -o CMakeFiles/VulkanGame.dir/src/game.cpp.o -c /run/media/tucoff/Arquivos/Projects/Project-Game-Vulkan1/src/game.cpp",
-  "file": "/run/media/tucoff/Arquivos/Projects/Project-Game-Vulkan1/src/game.cpp",
+  "directory": "/run/media/tucoff/Arquivos/Projects/Project-RayTracing-Vulkan/build",
+  "command": "/usr/bin/c++ -DVK_USE_PLATFORM_XCB_KHR -I/run/media/tucoff/Arquivos/Projects/Project-RayTracing-Vulkan/src -O3 -DNDEBUG -std=c++17 -o CMakeFiles/VulkanGame.dir/src/game.cpp.o -c /run/media/tucoff/Arquivos/Projects/Project-RayTracing-Vulkan/src/game.cpp",
+  "file": "/run/media/tucoff/Arquivos/Projects/Project-RayTracing-Vulkan/src/game.cpp",
   "output": "CMakeFiles/VulkanGame.dir/src/game.cpp.o"
 },
 {
-  "directory": "/run/media/tucoff/Arquivos/Projects/Project-Game-Vulkan1/build",
-  "command": "/usr/bin/c++ -DVK_ENABLE_VALIDATION_LAYERS -DVK_USE_PLATFORM_XCB_KHR -D_DEBUG -I/run/media/tucoff/Arquivos/Projects/Project-Game-Vulkan1/src -g -std=c++17 -Wall -Wextra -Wpedantic -o CMakeFiles/VulkanGame.dir/src/main.cpp.o -c /run/media/tucoff/Arquivos/Projects/Project-Game-Vulkan1/src/main.cpp",
-  "file": "/run/media/tucoff/Arquivos/Projects/Project-Game-Vulkan1/src/main.cpp",
+  "directory": "/run/media/tucoff/Arquivos/Projects/Project-RayTracing-Vulkan/build",
+  "command": "/usr/bin/c++ -DVK_USE_PLATFORM_XCB_KHR -I/run/media/tucoff/Arquivos/Projects/Project-RayTracing-Vulkan/src -O3 -DNDEBUG -std=c++17 -o CMakeFiles/VulkanGame.dir/src/main.cpp.o -c /run/media/tucoff/Arquivos/Projects/Project-RayTracing-Vulkan/src/main.cpp",
+  "file": "/run/media/tucoff/Arquivos/Projects/Project-RayTracing-Vulkan/src/main.cpp",
   "output": "CMakeFiles/VulkanGame.dir/src/main.cpp.o"
 },
 {
-  "directory": "/run/media/tucoff/Arquivos/Projects/Project-Game-Vulkan1/build",
-  "command": "/usr/bin/c++ -DVK_ENABLE_VALIDATION_LAYERS -DVK_USE_PLATFORM_XCB_KHR -D_DEBUG -I/run/media/tucoff/Arquivos/Projects/Project-Game-Vulkan1/src -g -std=c++17 -Wall -Wextra -Wpedantic -o CMakeFiles/VulkanGame.dir/src/utils.cpp.o -c /run/media/tucoff/Arquivos/Projects/Project-Game-Vulkan1/src/utils.cpp",
-  "file": "/run/media/tucoff/Arquivos/Projects/Project-Game-Vulkan1/src/utils.cpp",
+  "directory": "/run/media/tucoff/Arquivos/Projects/Project-RayTracing-Vulkan/build",
+  "command": "/usr/bin/c++ -DVK_USE_PLATFORM_XCB_KHR -I/run/media/tucoff/Arquivos/Projects/Project-RayTracing-Vulkan/src -O3 -DNDEBUG -std=c++17 -o CMakeFiles/VulkanGame.dir/src/utils.cpp.o -c /run/media/tucoff/Arquivos/Projects/Project-RayTracing-Vulkan/src/utils.cpp",
+  "file": "/run/media/tucoff/Arquivos/Projects/Project-RayTracing-Vulkan/src/utils.cpp",
   "output": "CMakeFiles/VulkanGame.dir/src/utils.cpp.o"
 }
 ]
