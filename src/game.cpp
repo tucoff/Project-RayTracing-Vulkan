@@ -1684,9 +1684,9 @@ private:
             1, &storageImageBarrier
         );
 
-        vkCmdBindPipeline(commandBuffer, static_cast<VkPipelineBindPoint>(1000165000), rtPipeline);
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, rtPipeline);
 
-        vkCmdBindDescriptorSets(commandBuffer, static_cast<VkPipelineBindPoint>(1000165000), rtPipelineLayout, 0, 1, &rtDescriptorSet, 0, nullptr);
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, rtPipelineLayout, 0, 1, &rtDescriptorSet, 0, nullptr);
 
         auto vkCmdTraceRaysKHR = reinterpret_cast<PFN_vkCmdTraceRaysKHR>(vkGetDeviceProcAddr(device, "vkCmdTraceRaysKHR"));
         if (!vkCmdTraceRaysKHR)
