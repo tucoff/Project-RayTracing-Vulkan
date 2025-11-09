@@ -31,7 +31,7 @@
 
 #pragma region Constants and Global Variables
 
-const char* APP_NAME = "Game-1";
+const char* APP_NAME = "RayTracing Vulkan Application";
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 800;
 
@@ -104,6 +104,7 @@ private:
 #pragma region Private Member Variables
 
     GLFWwindow* window = nullptr;
+
     VkInstance instance = VK_NULL_HANDLE;
     VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
     VkSurfaceKHR surface = VK_NULL_HANDLE;
@@ -137,8 +138,8 @@ private:
     bool firstMouse = true;
     float yaw = -90.0f;
     float pitch = 0.0f;
-    float lastX = WIDTH / 2.0f;
-    float lastY = HEIGHT / 2.0f;
+    float hX = WIDTH / 2.0f;
+    float hY = HEIGHT / 2.0f;
     float deltaTime = 0.0f;
     float lastFrame = 0.0f;
 
@@ -230,6 +231,171 @@ private:
         createSyncObjects();
     }
 
+    #pragma region Other Helper Functions
+    QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device)
+    {
+        QueueFamilyIndices indices;
+
+        uint32_t queueFamilyCount = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+
+        std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
+
+        int i = 0;
+        for (const auto& queueFamily : queueFamilies)
+        {
+            if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT)
+            {
+                indices.graphicsFamily = i;
+            }
+
+            VkBool32 presentSupport = false;
+            vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
+
+            if (presentSupport)
+            {
+                indices.presentFamily = i;
+            }
+
+            if (indices.isComplete())
+            {
+                break;
+            }
+
+            i++;
+        }
+
+        return indices;
+    }
+
+    VkFormat findDepthFormat()
+    {
+        return findSupportedFormat(
+            { VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT },
+            VK_IMAGE_TILING_OPTIMAL,
+            VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+        );
+    }
+
+    VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features)
+    {
+        for (VkFormat format : candidates)
+        {
+            VkFormatProperties props;
+            vkGetPhysicalDeviceFormatProperties(physicalDevice, format, &props);
+
+            if (tiling == VK_IMAGE_TILING_LINEAR && (props.linearTilingFeatures & features) == features)
+            {
+                return format;
+            }
+            else if (tiling == VK_IMAGE_TILING_OPTIMAL && (props.optimalTilingFeatures & features) == features)
+            {
+                return format;
+            }
+        }
+
+        throw std::runtime_error("failed to find supported format!");
+    }
+
+    void createImage(uint32_t texWidth, uint32_t texHeight, uint32_t mipLevels, VkSampleCountFlagBits numSamples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory)
+    {
+        VkImageCreateInfo imageInfo{};
+        imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        imageInfo.imageType = VK_IMAGE_TYPE_2D;
+        imageInfo.format = format;
+        imageInfo.extent.width = texWidth;
+        imageInfo.extent.height = texHeight;
+        imageInfo.extent.depth = 1;
+        imageInfo.mipLevels = mipLevels;
+        imageInfo.arrayLayers = 1;
+        imageInfo.samples = numSamples;
+        imageInfo.tiling = tiling;
+        imageInfo.usage = usage;
+        imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+        if (vkCreateImage(device, &imageInfo, nullptr, &image) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to create texture image!");
+        }
+
+        VkMemoryRequirements memRequirements;
+        vkGetImageMemoryRequirements(device, image, &memRequirements);
+
+        VkMemoryAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize = memRequirements.size;
+        allocInfo.memoryTypeIndex = findMemoryTypeIndex(memRequirements.memoryTypeBits, properties);
+
+        if (vkAllocateMemory(device, &allocInfo, nullptr, &imageMemory) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to allocate texture image memory!");
+        }
+
+        vkBindImageMemory(device, image, imageMemory, 0);
+    }
+
+    VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t mipLevels)
+    {
+        VkImageViewCreateInfo viewInfo{};
+        viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        viewInfo.image = image;
+        viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        viewInfo.format = format;
+        viewInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+        viewInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+        viewInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+        viewInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+        viewInfo.subresourceRange.aspectMask = aspectFlags;
+        viewInfo.subresourceRange.baseMipLevel = 0;
+        viewInfo.subresourceRange.levelCount = 1;
+        viewInfo.subresourceRange.baseArrayLayer = 0;
+        viewInfo.subresourceRange.layerCount = 1;
+        viewInfo.subresourceRange.levelCount = mipLevels;
+
+        VkImageView imageView;
+        if (vkCreateImageView(device, &viewInfo, nullptr, &imageView) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to create image view!");
+        }
+
+        return imageView;
+    }
+
+    uint32_t findMemoryTypeIndex(uint32_t typeFilter, VkMemoryPropertyFlags properties)
+    {
+        VkPhysicalDeviceMemoryProperties memProperties;
+        vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
+
+        for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++)
+        {
+            if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties)
+            {
+                return i;
+            }
+        }
+
+        throw std::runtime_error("failed to find suitable memory type!");
+    }
+
+    void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
+    {
+        VkCommandBuffer commandBuffer = beginSingleTimeCommand();
+
+        VkBufferCopy copyRegion{};
+        copyRegion.srcOffset = 0;
+        copyRegion.dstOffset = 0;
+        copyRegion.size = size;
+
+        vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
+
+        endSingleTimeCommand(commandBuffer);
+    }
+
+    #pragma endregion
+
+    #pragma region CreateInstance()
     void createInstance()
     {
         if (enableValidationLayers && !checkValidationLayerSupport())
@@ -241,7 +407,7 @@ private:
         appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
         appInfo.pApplicationName = APP_NAME;
         appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-        appInfo.pEngineName = "LXXIV";
+        appInfo.pEngineName = "74 Engine";
         appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
         appInfo.apiVersion = VK_API_VERSION_1_2;
 
@@ -319,6 +485,22 @@ private:
 
         return extensions;
     }
+    
+    #pragma endregion
+
+    #pragma region SetupDebugMessenger()
+    void setupDebugMessenger()
+    {
+        if (!enableValidationLayers) return;
+
+        VkDebugUtilsMessengerCreateInfoEXT createInfo;
+        populateDebugMessengerCreateInfo(createInfo);
+
+        if (CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to set up debug messenger!");
+        }
+    }
 
     void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo)
     {
@@ -343,19 +525,9 @@ private:
         return VK_FALSE;
     }
 
-    void setupDebugMessenger()
-    {
-        if (!enableValidationLayers) return;
+    #pragma endregion
 
-        VkDebugUtilsMessengerCreateInfoEXT createInfo;
-        populateDebugMessengerCreateInfo(createInfo);
-
-        if (CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS)
-        {
-            throw std::runtime_error("failed to set up debug messenger!");
-        }
-    }
-
+    #pragma region CreateSurface()
     void createSurface()
     {
         if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS)
@@ -364,6 +536,9 @@ private:
         }
     }
 
+    #pragma endregion
+
+    #pragma region PickPhysicalDevice()
     void pickPhysicalDevice()
     {
         uint32_t deviceCount = 0;
@@ -427,6 +602,9 @@ private:
         return requiredExtensions.empty();
     }
 
+    #pragma endregion
+
+    #pragma region CreateLogicalDevice()
     void createLogicalDevice()
     {
         QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
@@ -493,6 +671,9 @@ private:
         vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
     }
 
+    #pragma endregion
+
+    #pragma region QueryRayTracingProperties()
     void queryRayTracingProperties()
     {
         rayTracingPipelineProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR;
@@ -509,43 +690,9 @@ private:
         vkGetPhysicalDeviceProperties2(physicalDevice, &properties2);
     }
 
-    QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device)
-    {
-        QueueFamilyIndices indices;
+    #pragma endregion
 
-        uint32_t queueFamilyCount = 0;
-        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
-
-        std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
-
-        int i = 0;
-        for (const auto& queueFamily : queueFamilies)
-        {
-            if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT)
-            {
-                indices.graphicsFamily = i;
-            }
-
-            VkBool32 presentSupport = false;
-            vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
-
-            if (presentSupport)
-            {
-                indices.presentFamily = i;
-            }
-
-            if (indices.isComplete())
-            {
-                break;
-            }
-
-            i++;
-        }
-
-        return indices;
-    }
-
+    #pragma region CreateSwapChain()
     void createSwapChain()
     {
         SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice);
@@ -708,6 +855,9 @@ private:
         }
     }
 
+    #pragma endregion
+
+    #pragma region CreateImageViews()
     void createImageViews()
     {
         swapChainImageViews.resize(swapChainImages.size());
@@ -717,40 +867,9 @@ private:
         }
     }
 
-    static std::vector<char> readFile(const std::string& filename)
-    {
-        std::ifstream file(filename, std::ios::ate | std::ios::binary);
+    #pragma endregion
 
-        if (!file.is_open()) {
-            throw std::runtime_error("failed to open file: " + filename);
-        }
-
-        size_t fileSize = (size_t) file.tellg();
-        std::vector<char> buffer(fileSize);
-
-        file.seekg(0);
-        file.read(buffer.data(), fileSize);
-
-        file.close();
-
-        return buffer;
-    }
-
-    VkShaderModule createShaderModule(const std::vector<char>& code)
-    {
-        VkShaderModuleCreateInfo createInfo{};
-        createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-        createInfo.codeSize = code.size();
-        createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
-
-        VkShaderModule shaderModule;
-        if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create shader module!");
-        }
-
-        return shaderModule;
-    }
-
+    #pragma region CreateCommandPool()
     void createCommandPool()
     {
         QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
@@ -765,41 +884,10 @@ private:
             throw std::runtime_error("failed to create command pool!");
         }
     }
+    
+    #pragma endregion
 
-    VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features)
-    {
-        for (VkFormat format : candidates)
-        {
-            VkFormatProperties props;
-            vkGetPhysicalDeviceFormatProperties(physicalDevice, format, &props);
-
-            if (tiling == VK_IMAGE_TILING_LINEAR && (props.linearTilingFeatures & features) == features)
-            {
-                return format;
-            }
-            else if (tiling == VK_IMAGE_TILING_OPTIMAL && (props.optimalTilingFeatures & features) == features)
-            {
-                return format;
-            }
-        }
-
-        throw std::runtime_error("failed to find supported format!");
-    }
-
-    VkFormat findDepthFormat()
-    {
-        return findSupportedFormat(
-            { VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT },
-            VK_IMAGE_TILING_OPTIMAL,
-            VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
-        );
-    }
-
-    bool hasStencilComponent(VkFormat format)
-    {
-        return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT;
-    }
-
+    #pragma region CreateTextureImage()
     void createTextureImage()
     {
         const std::string TEXTURE_PATH = "textures/viking_room.png";
@@ -835,6 +923,143 @@ private:
 
         vkDestroyBuffer(device, stagingBuffer, nullptr);
         vkFreeMemory(device, stagingBufferMemory, nullptr);
+    }
+
+    void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& vertexBuffer, VkDeviceMemory& vertexBufferMemory)
+    {
+        VkBufferCreateInfo bufferInfo{};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.size = size;
+        bufferInfo.usage = usage;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        if (vkCreateBuffer(device, &bufferInfo, nullptr, &vertexBuffer) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to create vertex buffer!");
+        }
+
+        VkMemoryRequirements memRequirements;
+        vkGetBufferMemoryRequirements(device, vertexBuffer, &memRequirements);
+        VkMemoryAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize = memRequirements.size;
+        allocInfo.memoryTypeIndex = findMemoryTypeIndex(memRequirements.memoryTypeBits, properties);
+
+        if (vkAllocateMemory(device, &allocInfo, nullptr, &vertexBufferMemory) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to allocate vertex buffer memory!");
+        }
+
+        vkBindBufferMemory(device, vertexBuffer, vertexBufferMemory, 0);
+    }
+
+    void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t mipLevels)
+    {
+        (void)format;  
+        VkCommandBuffer commandBuffer = beginSingleTimeCommand();
+
+        VkImageMemoryBarrier barrier{};
+        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrier.oldLayout = oldLayout;
+        barrier.newLayout = newLayout;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.image = image;
+        barrier.subresourceRange.levelCount = mipLevels;
+
+        if (newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+        {
+            barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+        
+            if (hasStencilComponent(format))
+            {
+                barrier.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+            }
+        }
+        else
+        {
+            barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        }
+
+        barrier.subresourceRange.baseMipLevel = 0;
+        barrier.subresourceRange.levelCount = mipLevels;
+        barrier.subresourceRange.baseArrayLayer = 0;
+        barrier.subresourceRange.layerCount = 1;
+
+        VkPipelineStageFlags sourceStage;
+        VkPipelineStageFlags destinationStage;
+
+        if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+        {
+            barrier.srcAccessMask = 0;
+            barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+            sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+            destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        }
+        else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+        {
+            barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+            sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        }
+        else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+        {
+            barrier.srcAccessMask = 0;
+            barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+            sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+            destinationStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+        }
+        else
+        {
+            throw std::invalid_argument("unsupported layout transition!");
+        }
+
+        vkCmdPipelineBarrier(
+            commandBuffer,
+            sourceStage, destinationStage,
+            0,
+            0, nullptr,
+            0, nullptr,
+            1, &barrier
+        );
+
+        endSingleTimeCommand(commandBuffer);
+    }
+
+    bool hasStencilComponent(VkFormat format)
+    {
+        return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT;
+    }
+
+    void copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height)
+    {
+        VkCommandBuffer commandBuffer = beginSingleTimeCommand();
+
+        VkBufferImageCopy region{};
+        region.bufferOffset = 0;
+        region.bufferRowLength = 0;
+        region.bufferImageHeight = 0;
+        region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        region.imageSubresource.mipLevel = 0;
+        region.imageSubresource.baseArrayLayer = 0;
+        region.imageSubresource.layerCount = 1;
+        region.imageOffset = { 0, 0, 0 };
+        region.imageExtent = { width, height, 1 };
+
+        vkCmdCopyBufferToImage(
+            commandBuffer,
+            buffer,
+            image,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            1,
+            &region
+        );
+
+        endSingleTimeCommand(commandBuffer);
     }
 
     void generateMipmaps(VkImage image, VkFormat imageFormat, int32_t texWidth, int32_t texHeight, uint32_t mipLevels)
@@ -926,44 +1151,6 @@ private:
         endSingleTimeCommand(commandBuffer);
     }
 
-    void createImage(uint32_t texWidth, uint32_t texHeight, uint32_t mipLevels, VkSampleCountFlagBits numSamples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory)
-    {
-        VkImageCreateInfo imageInfo{};
-        imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-        imageInfo.imageType = VK_IMAGE_TYPE_2D;
-        imageInfo.format = format;
-        imageInfo.extent.width = texWidth;
-        imageInfo.extent.height = texHeight;
-        imageInfo.extent.depth = 1;
-        imageInfo.mipLevels = mipLevels;
-        imageInfo.arrayLayers = 1;
-        imageInfo.samples = numSamples;
-        imageInfo.tiling = tiling;
-        imageInfo.usage = usage;
-        imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-
-        if (vkCreateImage(device, &imageInfo, nullptr, &image) != VK_SUCCESS)
-        {
-            throw std::runtime_error("failed to create texture image!");
-        }
-
-        VkMemoryRequirements memRequirements;
-        vkGetImageMemoryRequirements(device, image, &memRequirements);
-
-        VkMemoryAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocInfo.allocationSize = memRequirements.size;
-        allocInfo.memoryTypeIndex = findMemoryTypeIndex(memRequirements.memoryTypeBits, properties);
-
-        if (vkAllocateMemory(device, &allocInfo, nullptr, &imageMemory) != VK_SUCCESS)
-        {
-            throw std::runtime_error("failed to allocate texture image memory!");
-        }
-
-        vkBindImageMemory(device, image, imageMemory, 0);
-    }
-
     VkCommandBuffer beginSingleTimeCommand()
     {
         VkCommandBuffer commandBuffer;
@@ -1011,142 +1198,17 @@ private:
         vkQueueWaitIdle(graphicsQueue);
     }
 
-    void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t mipLevels)
-    {
-        (void)format;  
-        VkCommandBuffer commandBuffer = beginSingleTimeCommand();
+    #pragma endregion
 
-        VkImageMemoryBarrier barrier{};
-        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        barrier.oldLayout = oldLayout;
-        barrier.newLayout = newLayout;
-        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.image = image;
-        barrier.subresourceRange.levelCount = mipLevels;
-
-        if (newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-        {
-            barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-        
-            if (hasStencilComponent(format))
-            {
-                barrier.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
-            }
-        }
-        else
-        {
-            barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        }
-
-        barrier.subresourceRange.baseMipLevel = 0;
-        barrier.subresourceRange.levelCount = mipLevels;
-        barrier.subresourceRange.baseArrayLayer = 0;
-        barrier.subresourceRange.layerCount = 1;
-
-        VkPipelineStageFlags sourceStage;
-        VkPipelineStageFlags destinationStage;
-
-        if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
-        {
-            barrier.srcAccessMask = 0;
-            barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-
-            sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-            destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        }
-        else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-        {
-            barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-            sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-            destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-        }
-        else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-        {
-            barrier.srcAccessMask = 0;
-            barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-
-            sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-            destinationStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-        }
-        else
-        {
-            throw std::invalid_argument("unsupported layout transition!");
-        }
-
-        vkCmdPipelineBarrier(
-            commandBuffer,
-            sourceStage, destinationStage,
-            0,
-            0, nullptr,
-            0, nullptr,
-            1, &barrier
-        );
-
-        endSingleTimeCommand(commandBuffer);
-    }
-
-    void copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height)
-    {
-        VkCommandBuffer commandBuffer = beginSingleTimeCommand();
-
-        VkBufferImageCopy region{};
-        region.bufferOffset = 0;
-        region.bufferRowLength = 0;
-        region.bufferImageHeight = 0;
-        region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        region.imageSubresource.mipLevel = 0;
-        region.imageSubresource.baseArrayLayer = 0;
-        region.imageSubresource.layerCount = 1;
-        region.imageOffset = { 0, 0, 0 };
-        region.imageExtent = { width, height, 1 };
-
-        vkCmdCopyBufferToImage(
-            commandBuffer,
-            buffer,
-            image,
-            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            1,
-            &region
-        );
-
-        endSingleTimeCommand(commandBuffer);
-    }
-
+    #pragma region CreateTextureImageView()
     void createTextureImageView()
     {
         textureImageView = createImageView(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, mipLevels);
     }
 
-    VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t mipLevels)
-    {
-        VkImageViewCreateInfo viewInfo{};
-        viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        viewInfo.image = image;
-        viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        viewInfo.format = format;
-        viewInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-        viewInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-        viewInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-        viewInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-        viewInfo.subresourceRange.aspectMask = aspectFlags;
-        viewInfo.subresourceRange.baseMipLevel = 0;
-        viewInfo.subresourceRange.levelCount = 1;
-        viewInfo.subresourceRange.baseArrayLayer = 0;
-        viewInfo.subresourceRange.layerCount = 1;
-        viewInfo.subresourceRange.levelCount = mipLevels;
+    #pragma endregion
 
-        VkImageView imageView;
-        if (vkCreateImageView(device, &viewInfo, nullptr, &imageView) != VK_SUCCESS)
-        {
-            throw std::runtime_error("failed to create image view!");
-        }
-
-        return imageView;
-    }
-
+    #pragma region CreateTextureSampler()
     void createTextureSampler()
     {
         VkSamplerCreateInfo samplerInfo{};
@@ -1173,6 +1235,9 @@ private:
         }
     }
 
+    #pragma endregion
+
+    #pragma region CreateStorageImage()
     void createStorageImage()
     {
         createImage(swapChainExtent.width, swapChainExtent.height, 1, VK_SAMPLE_COUNT_1_BIT, 
@@ -1184,6 +1249,9 @@ private:
         storageImageView = createImageView(storageImage, swapChainImageFormat, VK_IMAGE_ASPECT_COLOR_BIT, 1);
     }
 
+    #pragma endregion
+
+    #pragma region CreateRTDescriptorSetLayoutPoolSets()
     void createRTDescriptorSetLayout()
     {
         VkDescriptorSetLayoutBinding storageImageLayoutBinding{};
@@ -1255,6 +1323,9 @@ private:
         vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
     }
 
+    #pragma endregion
+
+    #pragma region CreateRTPipelineAndSBT()
     void createRTPipeline()
     {
         VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
@@ -1333,6 +1404,40 @@ private:
         vkDestroyShaderModule(device, missShaderModule, nullptr);
     }
 
+    static std::vector<char> readFile(const std::string& filename)
+    {
+        std::ifstream file(filename, std::ios::ate | std::ios::binary);
+
+        if (!file.is_open()) {
+            throw std::runtime_error("failed to open file: " + filename);
+        }
+
+        size_t fileSize = (size_t) file.tellg();
+        std::vector<char> buffer(fileSize);
+
+        file.seekg(0);
+        file.read(buffer.data(), fileSize);
+
+        file.close();
+
+        return buffer;
+    }
+
+    VkShaderModule createShaderModule(const std::vector<char>& code)
+    {
+        VkShaderModuleCreateInfo createInfo{};
+        createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        createInfo.codeSize = code.size();
+        createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
+
+        VkShaderModule shaderModule;
+        if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create shader module!");
+        }
+
+        return shaderModule;
+    }
+
     void createRTShaderBindingTable()
     {
         auto vkGetRayTracingShaderGroupHandlesKHR = reinterpret_cast<PFN_vkGetRayTracingShaderGroupHandlesKHR>(vkGetDeviceProcAddr(device, "vkGetRayTracingShaderGroupHandlesKHR"));
@@ -1409,65 +1514,10 @@ private:
         callableShaderSbtEntry.stride = 0;
         callableShaderSbtEntry.size = 0;
     }
+    
+    #pragma endregion
 
-    uint32_t findMemoryTypeIndex(uint32_t typeFilter, VkMemoryPropertyFlags properties)
-    {
-        VkPhysicalDeviceMemoryProperties memProperties;
-        vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
-
-        for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++)
-        {
-            if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties)
-            {
-                return i;
-            }
-        }
-
-        throw std::runtime_error("failed to find suitable memory type!");
-    }
-
-    void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& vertexBuffer, VkDeviceMemory& vertexBufferMemory)
-    {
-        VkBufferCreateInfo bufferInfo{};
-        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferInfo.size = size;
-        bufferInfo.usage = usage;
-        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        if (vkCreateBuffer(device, &bufferInfo, nullptr, &vertexBuffer) != VK_SUCCESS)
-        {
-            throw std::runtime_error("failed to create vertex buffer!");
-        }
-
-        VkMemoryRequirements memRequirements;
-        vkGetBufferMemoryRequirements(device, vertexBuffer, &memRequirements);
-        VkMemoryAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocInfo.allocationSize = memRequirements.size;
-        allocInfo.memoryTypeIndex = findMemoryTypeIndex(memRequirements.memoryTypeBits, properties);
-
-        if (vkAllocateMemory(device, &allocInfo, nullptr, &vertexBufferMemory) != VK_SUCCESS)
-        {
-            throw std::runtime_error("failed to allocate vertex buffer memory!");
-        }
-
-        vkBindBufferMemory(device, vertexBuffer, vertexBufferMemory, 0);
-    }
-
-    void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
-    {
-        VkCommandBuffer commandBuffer = beginSingleTimeCommand();
-
-        VkBufferCopy copyRegion{};
-        copyRegion.srcOffset = 0;
-        copyRegion.dstOffset = 0;
-        copyRegion.size = size;
-
-        vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
-
-        endSingleTimeCommand(commandBuffer);
-    }
-
+    #pragma region CreateCommandBuffers()
     void createCommandBuffers()
     {
         commandBuffers.resize(swapChainImages.size());
@@ -1484,6 +1534,9 @@ private:
         }
     }
 
+    #pragma endregion
+
+    #pragma region CreateSyncObjects()
     void createSyncObjects()
     {
         imageAvailableSemaphores.resize(swapChainImages.size());
@@ -1506,6 +1559,8 @@ private:
         }
     }
 
+    #pragma endregion
+
 #pragma endregion
 
 #pragma region Camera Functions
@@ -1514,15 +1569,15 @@ private:
     {
         if (firstMouse) 
         {
-            lastX = xpos;
-            lastY = ypos;
+            hX = xpos;
+            hY = ypos;
             firstMouse = false;
         }
 
-        float xoffset = xpos - lastX;
-        float yoffset = lastY - ypos; 
-        lastX = xpos;
-        lastY = ypos;
+        float xoffset = xpos - hX;
+        float yoffset = hY - ypos; 
+        hX = xpos;
+        hY = ypos;
 
         xoffset *= MOUSE_SENSITIVITY;
         yoffset *= MOUSE_SENSITIVITY;
