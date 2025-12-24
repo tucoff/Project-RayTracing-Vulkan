@@ -31,7 +31,8 @@ set(TEXTURE_DIR ${PROJECT_ROOT_DIR}/textures)
 
 # Dependencies
 find_package(Vulkan REQUIRED)
-find_package(glfw3 REQUIRED)
+find_package(glfw3 CONFIG REQUIRED)
+find_package(glm CONFIG REQUIRED)
 
 # Collect source files
 file(GLOB_RECURSE PROJECT_SOURCES
@@ -52,6 +53,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 target_link_libraries(${PROJECT_NAME} PRIVATE
     Vulkan::Vulkan
     glfw
+    glm::glm
 )
 
 # Platform-specific configurations
@@ -67,11 +69,11 @@ elseif(UNIX AND NOT APPLE)
     )
 endif()
 
-# Shader compilation
-find_program(GLSLC_EXECUTABLE glslc HINTS $ENV{VULKAN_SDK}/bin)
-if(NOT GLSLC_EXECUTABLE)
-    message(FATAL_ERROR "glslc shader compiler not found!")
-endif()
+# Tenta encontrar o glslc usando o caminho do SDK conhecido
+find_program(GLSLC_EXECUTABLE 
+    NAMES glslc glslc.exe
+    HINTS "C:/VulkanSDK/1.4.335.0/Bin" "$ENV{VULKAN_SDK}/Bin"
+)
 
 # Function to compile shaders
 function(compile_shader SHADER_SOURCE)

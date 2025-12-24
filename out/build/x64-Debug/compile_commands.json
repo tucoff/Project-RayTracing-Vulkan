@@ -1,0 +1,20 @@
+[
+{
+  "directory": "C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug",
+  "command": "C:\\PROGRA~1\\MICROS~2\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DGLFW_DLL -DNOMINMAX -DVK_ENABLE_VALIDATION_LAYERS -DVK_USE_PLATFORM_WIN32_KHR -DWIN32_LEAN_AND_MEAN -D_DEBUG -I\"C:\\All Projects\\Pessoal\\Project-RayTracing-Vulkan\\src\" -external:IC:\\VulkanSDK\\1.4.335.0\\Include -external:I\"C:\\All Projects\\Pessoal\\Project-RayTracing-Vulkan\\out\\build\\x64-Debug\\vcpkg_installed\\x64-windows\\include\" -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /Ob0 /Od /RTC1 -std:c++17 -MDd /W4 /FoCMakeFiles\\VulkanGame.dir\\src\\game.cpp.obj /FdCMakeFiles\\VulkanGame.dir\\ /FS -c \"C:\\All Projects\\Pessoal\\Project-RayTracing-Vulkan\\src\\game.cpp\"",
+  "file": "C:\\All Projects\\Pessoal\\Project-RayTracing-Vulkan\\src\\game.cpp",
+  "output": "CMakeFiles\\VulkanGame.dir\\src\\game.cpp.obj"
+},
+{
+  "directory": "C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug",
+  "command": "C:\\PROGRA~1\\MICROS~2\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DGLFW_DLL -DNOMINMAX -DVK_ENABLE_VALIDATION_LAYERS -DVK_USE_PLATFORM_WIN32_KHR -DWIN32_LEAN_AND_MEAN -D_DEBUG -I\"C:\\All Projects\\Pessoal\\Project-RayTracing-Vulkan\\src\" -external:IC:\\VulkanSDK\\1.4.335.0\\Include -external:I\"C:\\All Projects\\Pessoal\\Project-RayTracing-Vulkan\\out\\build\\x64-Debug\\vcpkg_installed\\x64-windows\\include\" -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /Ob0 /Od /RTC1 -std:c++17 -MDd /W4 /FoCMakeFiles\\VulkanGame.dir\\src\\main.cpp.obj /FdCMakeFiles\\VulkanGame.dir\\ /FS -c \"C:\\All Projects\\Pessoal\\Project-RayTracing-Vulkan\\src\\main.cpp\"",
+  "file": "C:\\All Projects\\Pessoal\\Project-RayTracing-Vulkan\\src\\main.cpp",
+  "output": "CMakeFiles\\VulkanGame.dir\\src\\main.cpp.obj"
+},
+{
+  "directory": "C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug",
+  "command": "C:\\PROGRA~1\\MICROS~2\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DGLFW_DLL -DNOMINMAX -DVK_ENABLE_VALIDATION_LAYERS -DVK_USE_PLATFORM_WIN32_KHR -DWIN32_LEAN_AND_MEAN -D_DEBUG -I\"C:\\All Projects\\Pessoal\\Project-RayTracing-Vulkan\\src\" -external:IC:\\VulkanSDK\\1.4.335.0\\Include -external:I\"C:\\All Projects\\Pessoal\\Project-RayTracing-Vulkan\\out\\build\\x64-Debug\\vcpkg_installed\\x64-windows\\include\" -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /Ob0 /Od /RTC1 -std:c++17 -MDd /W4 /FoCMakeFiles\\VulkanGame.dir\\src\\utils.cpp.obj /FdCMakeFiles\\VulkanGame.dir\\ /FS -c \"C:\\All Projects\\Pessoal\\Project-RayTracing-Vulkan\\src\\utils.cpp\"",
+  "file": "C:\\All Projects\\Pessoal\\Project-RayTracing-Vulkan\\src\\utils.cpp",
+  "output": "CMakeFiles\\VulkanGame.dir\\src\\utils.cpp.obj"
+}
+]

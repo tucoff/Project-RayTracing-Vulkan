@@ -1,0 +1,41 @@
+﻿{
+  "configurations": [
+    {
+      "name": "x64-Debug",
+      "generator": "Ninja",
+      "configurationType": "Debug",
+      "inheritEnvironments": [ "msvc_x64_x64" ],
+      "buildRoot": "${projectDir}\\out\\build\\${name}",
+      "installRoot": "${projectDir}\\out\\install\\${name}",
+      "cmakeCommandArgs": "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake",
+      "buildCommandArgs": "",
+      "ctestCommandArgs": "",
+      "variables": [
+        {
+          "name": "VCPKG_TARGET_TRIPLET",
+          "value": "x64-windows",
+          "type": "STRING"
+        },
+        {
+          "name": "Vulkan_LIBRARY",
+          "value": "C:/VulkanSDK/1.4.335.0/Lib/vulkan-1.lib",
+          "type": "FILEPATH"
+        },
+        {
+          "name": "Vulkan_INCLUDE_DIR",
+          "value": "C:/VulkanSDK/1.4.335.0/Include",
+          "type": "PATH"
+        },
+        {
+          "name": "Vulkan_GLSLC_EXECUTABLE",
+          "value": "C:/VulkanSDK/1.4.335.0/Bin/glslc.exe"
+        },
+        {
+          "name": "Vulkan_GLSLANG_VALIDATOR_EXECUTABLE",
+          "value": "C:\\VulkanSDK\\1.4.335.0\\Bin\\glslangValidator.exe",
+          "type": "FILEPATH"
+        }
+      ]
+    }
+  ]
+}
