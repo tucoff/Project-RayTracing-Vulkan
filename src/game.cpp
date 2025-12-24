@@ -1380,7 +1380,7 @@ private:
         VkRayTracingShaderGroupCreateInfoKHR missGroup{};
         missGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
         missGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
-        missGroup.generalShader = 1; // índice do miss stage
+        missGroup.generalShader = 1;
         missGroup.closestHitShader = VK_SHADER_UNUSED_KHR;
         missGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
         missGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
