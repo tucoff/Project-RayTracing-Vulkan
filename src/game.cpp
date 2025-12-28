@@ -222,11 +222,11 @@ private:
         createTextureImageView();
         createTextureSampler();
         createStorageImage();
-        createRTDescriptorSetLayout();
-        createRTDescriptorPool();
-        createRTDescriptorSets();
-        createRTPipeline();
-        createRTShaderBindingTable();
+        createDescriptorSetLayout();
+        createDescriptorPool();
+        createDescriptorSets();
+        createPipeline();
+        createShaderBindingTable();
         createCommandBuffers();
         createSyncObjects();
     }
@@ -1257,8 +1257,8 @@ private:
 
     #pragma endregion
 
-    #pragma region CreateRTDescriptorSetLayoutPoolSets()
-    void createRTDescriptorSetLayout()
+    #pragma region CreateDescriptorSetLayoutPoolSets()
+    void createDescriptorSetLayout()
     {
         VkDescriptorSetLayoutBinding storageImageLayoutBinding{};
         storageImageLayoutBinding.binding = 0;
@@ -1279,7 +1279,7 @@ private:
         }
     }
 
-    void createRTDescriptorPool()
+    void createDescriptorPool()
     {
         std::array<VkDescriptorPoolSize, 1> poolSizes{};
         poolSizes[0].type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
@@ -1297,7 +1297,7 @@ private:
         }
     }
 
-    void createRTDescriptorSets()
+    void createDescriptorSets()
     {
         std::array<VkDescriptorSetLayout, 1> layouts = {rtDescriptorSetLayout};
         VkDescriptorSetAllocateInfo allocInfo{};
@@ -1331,8 +1331,8 @@ private:
 
     #pragma endregion
 
-    #pragma region CreateRTPipelineAndSBT()
-    void createRTPipeline()
+    #pragma region CreatePipelineAndSBT()
+    void createPipeline()
     {
         VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
         pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -1444,7 +1444,7 @@ private:
         return shaderModule;
     }
 
-    void createRTShaderBindingTable()
+    void createShaderBindingTable()
     {
         auto vkGetRayTracingShaderGroupHandlesKHR = reinterpret_cast<PFN_vkGetRayTracingShaderGroupHandlesKHR>(vkGetDeviceProcAddr(device, "vkGetRayTracingShaderGroupHandlesKHR"));
         if (!vkGetRayTracingShaderGroupHandlesKHR)
@@ -1927,7 +1927,7 @@ private:
         createSwapChain();
         createImageViews();
         createStorageImage();
-        createRTDescriptorSets();  
+        createDescriptorSets();  
     
         imagesInFlight.resize(swapChainImages.size(), VK_NULL_HANDLE);
     }
