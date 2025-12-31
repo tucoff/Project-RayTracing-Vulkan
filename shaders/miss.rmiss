@@ -5,6 +5,5 @@ layout(location = 0) rayPayloadInEXT vec3 hitValue;
 
 void main()
 {
-    // Cor azul para representar o céu
     hitValue = vec3(0.4, 0.6, 1.0);
 }
