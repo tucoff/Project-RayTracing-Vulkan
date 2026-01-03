@@ -77,6 +77,13 @@ struct SwapChainSupportDetails
     std::vector<VkPresentModeKHR> presentModes;
 };
 
+struct CameraUBO {
+    alignas(16) glm::vec3 origin;
+    alignas(16) glm::vec3 lower_left_corner;
+    alignas(16) glm::vec3 horizontal;
+    alignas(16) glm::vec3 vertical;
+};
+
 #pragma endregion
 
 class Game
@@ -119,7 +126,8 @@ private:
     VkImageView storageImageView = VK_NULL_HANDLE;
     VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
     VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
-    VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+    VkDescriptorSet descriptorSet = VK_NULL_HANDLE; 
+    std::vector<VkDescriptorSet> descriptorSets;
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
     VkPipeline pipeline = VK_NULL_HANDLE;
     std::vector<VkCommandBuffer> commandBuffers;
@@ -129,8 +137,10 @@ private:
     std::vector<VkFence> imagesInFlight;
     size_t currentFrame = 0;
     bool framebufferResized = false;
-    uint32_t mipLevels = 1;
-
+    uint32_t mipLevels = 1; 
+    std::vector<VkBuffer> cameraUniformBuffers;
+    std::vector<VkDeviceMemory> cameraUniformBuffersMemory;
+    void* cameraBuffersMapped[MAX_FRAMES_IN_FLIGHT]; 
     glm::vec3 cameraPos = glm::vec3(2.0f, 2.0f, 2.0f);
     glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
     glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
@@ -193,6 +203,7 @@ private:
         createSwapChain();
         createImageViews();
         createCommandPool();
+        createUniformBuffers();
         createTextureImage();
         createTextureImageView();
         createTextureSampler();
@@ -1207,7 +1218,14 @@ private:
         storageImageLayoutBinding.pImmutableSamplers = nullptr;
         storageImageLayoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
-        std::array<VkDescriptorSetLayoutBinding, 1> bindings = {storageImageLayoutBinding};
+		VkDescriptorSetLayoutBinding uniformBufferLayoutBinding{};
+		uniformBufferLayoutBinding.binding = 1;
+		uniformBufferLayoutBinding.descriptorCount = 1;
+		uniformBufferLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		uniformBufferLayoutBinding.pImmutableSamplers = nullptr;
+		uniformBufferLayoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+        std::array<VkDescriptorSetLayoutBinding, 2> bindings = {storageImageLayoutBinding, uniformBufferLayoutBinding};
         VkDescriptorSetLayoutCreateInfo layoutInfo{};
         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
@@ -1220,53 +1238,74 @@ private:
     }
 
     void createDescriptorPool()
-    {
-        std::array<VkDescriptorPoolSize, 1> poolSizes{};
+    { 
+        std::array<VkDescriptorPoolSize, 2> poolSizes{};
+         
         poolSizes[0].type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-        poolSizes[0].descriptorCount = 1;
+        poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+         
+        poolSizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        poolSizes[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
 
         VkDescriptorPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+
         poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
         poolInfo.pPoolSizes = poolSizes.data();
-        poolInfo.maxSets = 1;
+         
+        poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
 
         if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS)
         {
-            throw std::runtime_error("failed to create RT descriptor pool!");
+            throw std::runtime_error("failed to create descriptor pool!");
         }
     }
 
     void createDescriptorSets()
-    {
-        std::array<VkDescriptorSetLayout, 1> layouts = {descriptorSetLayout};
+    { 
+        std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayout);
+         
         VkDescriptorSetAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
         allocInfo.descriptorPool = descriptorPool;
-        allocInfo.descriptorSetCount = 1;
+        allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT); 
         allocInfo.pSetLayouts = layouts.data();
 
-        if (vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet) != VK_SUCCESS)
+        descriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
+        if (vkAllocateDescriptorSets(device, &allocInfo, descriptorSets.data()) != VK_SUCCESS)
         {
-            throw std::runtime_error("failed to allocate RT descriptor sets!");
+            throw std::runtime_error("failed to allocate descriptor sets!");
         }
+         
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+        { 
+            VkDescriptorImageInfo imageInfo{};
+            imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+            imageInfo.imageView = storageImageView;
+             
+            VkDescriptorBufferInfo bufferInfo{};
+            bufferInfo.buffer = cameraUniformBuffers[i];  
+            bufferInfo.offset = 0;
+            bufferInfo.range = sizeof(CameraUBO);
 
-        VkDescriptorImageInfo imageInfo{};
-        imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-        imageInfo.imageView = storageImageView;
-        imageInfo.sampler = VK_NULL_HANDLE; 
+            std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
+             
+            descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWrites[0].dstSet = descriptorSets[i]; 
+            descriptorWrites[0].dstBinding = 0;
+            descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+            descriptorWrites[0].descriptorCount = 1;
+            descriptorWrites[0].pImageInfo = &imageInfo;
+             
+            descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWrites[1].dstSet = descriptorSets[i]; 
+            descriptorWrites[1].dstBinding = 1;
+            descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            descriptorWrites[1].descriptorCount = 1;
+            descriptorWrites[1].pBufferInfo = &bufferInfo;
 
-        std::array<VkWriteDescriptorSet, 1> descriptorWrites{};
-
-        descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[0].dstSet = descriptorSet;
-        descriptorWrites[0].dstBinding = 0;
-        descriptorWrites[0].dstArrayElement = 0;
-        descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-        descriptorWrites[0].descriptorCount = 1;
-        descriptorWrites[0].pImageInfo = &imageInfo;
-
-        vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+            vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+        }
     }
 
     #pragma endregion
@@ -1358,6 +1397,28 @@ private:
     }
 
     #pragma endregion
+
+    #pragma region CreateUniformBuffers()
+    void createUniformBuffers()
+    {
+        VkDeviceSize bufferSize = sizeof(CameraUBO);
+
+        cameraUniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+        cameraUniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
+
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+        { 
+            createBuffer(bufferSize,
+                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                cameraUniformBuffers[i],
+                cameraUniformBuffersMemory[i]);
+             
+            vkMapMemory(device, cameraUniformBuffersMemory[i], 0, bufferSize, 0, &cameraBuffersMapped[i]);
+        }
+    }
+
+	#pragma endregion
 
     #pragma region CreateSyncObjects()
     void createSyncObjects()
@@ -1510,6 +1571,8 @@ private:
 
         vkResetFences(device, 1, &inFlightFences[currentFrame]);
 
+		updateUniformBuffer(currentFrame);
+
         vkResetCommandBuffer(commandBuffers[currentFrame], 0);
 
         try {
@@ -1609,9 +1672,9 @@ private:
             1, &storageImageBarrier
         );
              
-        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline); 
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);  
 
-        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, nullptr);
              
         uint32_t groupCountX = (swapChainExtent.width + 15) / 16;
         uint32_t groupCountY = (swapChainExtent.height + 15) / 16;
@@ -1708,6 +1771,30 @@ private:
         imagesInFlight.resize(swapChainImages.size(), VK_NULL_HANDLE);
     }
 
+    void updateUniformBuffer(uint32_t currentImage)
+    { 
+        float aspect_ratio = swapChainExtent.width / (float)swapChainExtent.height;
+        float viewport_height = 2.0f;
+        float viewport_width = aspect_ratio * viewport_height;
+        float focal_length = 1.0f;
+         
+        glm::vec3 w = glm::normalize(-cameraFront); 
+        glm::vec3 u = glm::normalize(glm::cross(cameraUp, w)); 
+        glm::vec3 v = glm::cross(w, u);
+         
+        glm::vec3 horizontal = viewport_width * u;
+        glm::vec3 vertical = viewport_height * v;
+         
+        glm::vec3 lower_left_corner = cameraPos - (horizontal / 2.0f) - (vertical / 2.0f) - (w * focal_length);
+         
+        CameraUBO ubo{};
+        ubo.origin = cameraPos;
+        ubo.lower_left_corner = lower_left_corner;
+        ubo.horizontal = horizontal;
+        ubo.vertical = vertical;
+         
+        memcpy(cameraBuffersMapped[currentImage], &ubo, sizeof(ubo));
+    }
 #pragma endregion
 
 #pragma region Cleanup()
@@ -1736,6 +1823,12 @@ private:
         }
 
         vkDestroySwapchainKHR(device, swapChain, nullptr);
+
+        if (!descriptorSets.empty())
+        {
+            vkFreeDescriptorSets(device, descriptorPool, static_cast<uint32_t>(descriptorSets.size()), descriptorSets.data());
+            descriptorSets.clear();
+        }
     }
 
     void cleanup()
@@ -1790,6 +1883,12 @@ private:
             vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
             vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
             vkDestroyFence(device, inFlightFences[i], nullptr);
+        }
+
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+        {
+            vkDestroyBuffer(device, cameraUniformBuffers[i], nullptr);
+            vkFreeMemory(device, cameraUniformBuffersMemory[i], nullptr);
         }
 
         vkDestroyDevice(device, nullptr);
