@@ -46,15 +46,7 @@ const std::vector<const char*> validationLayers =
 
 const std::vector<const char*> deviceExtensions =
 {
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-    VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
-    VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
-    VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
-    VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
-    VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
-    VK_KHR_SPIRV_1_4_EXTENSION_NAME,
-    VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME,
-    VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME
 };
 
 #ifdef NDEBUG
@@ -121,7 +113,15 @@ private:
     VkImage textureImage = VK_NULL_HANDLE;
     VkDeviceMemory textureImageMemory = VK_NULL_HANDLE;
     VkImageView textureImageView = VK_NULL_HANDLE;
-    VkSampler textureSampler = VK_NULL_HANDLE;
+    VkSampler textureSampler = VK_NULL_HANDLE; 
+    VkImage storageImage = VK_NULL_HANDLE;
+    VkDeviceMemory storageImageMemory = VK_NULL_HANDLE;
+    VkImageView storageImageView = VK_NULL_HANDLE;
+    VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
+    VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
+    VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+    VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+    VkPipeline pipeline = VK_NULL_HANDLE;
     std::vector<VkCommandBuffer> commandBuffers;
     std::vector<VkSemaphore> imageAvailableSemaphores;
     std::vector<VkSemaphore> renderFinishedSemaphores;
@@ -142,30 +142,6 @@ private:
     float hY = HEIGHT / 2.0f;
     float deltaTime = 0.0f;
     float lastFrame = 0.0f;
-
-    // Ray Tracing Resources
-    VkImage storageImage = VK_NULL_HANDLE;
-    VkDeviceMemory storageImageMemory = VK_NULL_HANDLE;
-    VkImageView storageImageView = VK_NULL_HANDLE;
-    
-    // Ray Tracing Properties
-    VkPhysicalDeviceRayTracingPipelinePropertiesKHR rayTracingPipelineProperties{};
-    VkPhysicalDeviceAccelerationStructurePropertiesKHR accelerationStructureProperties{};
-    
-    // Ray Tracing Pipeline Resources
-    VkDescriptorSetLayout rtDescriptorSetLayout = VK_NULL_HANDLE;
-    VkDescriptorPool rtDescriptorPool = VK_NULL_HANDLE;
-    VkDescriptorSet rtDescriptorSet = VK_NULL_HANDLE;
-    VkPipelineLayout rtPipelineLayout = VK_NULL_HANDLE;
-    VkPipeline rtPipeline = VK_NULL_HANDLE;
-    
-    // Shader Binding Table
-    VkBuffer rtSBTBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory rtSBTBufferMemory = VK_NULL_HANDLE;
-    VkStridedDeviceAddressRegionKHR raygenShaderSbtEntry{};
-    VkStridedDeviceAddressRegionKHR missShaderSbtEntry{};
-    VkStridedDeviceAddressRegionKHR hitShaderSbtEntry{};
-    VkStridedDeviceAddressRegionKHR callableShaderSbtEntry{};
 
 #pragma endregion
 
@@ -214,7 +190,6 @@ private:
         createSurface();
         pickPhysicalDevice();
         createLogicalDevice();
-        queryRayTracingProperties();
         createSwapChain();
         createImageViews();
         createCommandPool();
@@ -226,7 +201,6 @@ private:
         createDescriptorPool();
         createDescriptorSets();
         createPipeline();
-        createShaderBindingTable();
         createCommandBuffers();
         createSyncObjects();
     }
@@ -381,7 +355,7 @@ private:
     void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
     {
         VkCommandBuffer commandBuffer = beginSingleTimeCommand();
-
+        
         VkBufferCopy copyRegion{};
         copyRegion.srcOffset = 0;
         copyRegion.dstOffset = 0;
@@ -620,25 +594,10 @@ private:
             queueCreateInfo.queueCount = 1;
             queueCreateInfo.pQueuePriorities = &queuePriority;
             queueCreateInfos.push_back(queueCreateInfo);
-        }
-
-        VkPhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddressFeatures{};
-        bufferDeviceAddressFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
-        bufferDeviceAddressFeatures.bufferDeviceAddress = VK_TRUE;  
-        bufferDeviceAddressFeatures.pNext = nullptr; 
-
-        VkPhysicalDeviceAccelerationStructureFeaturesKHR accelerationStructureFeatures{};
-        accelerationStructureFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
-        accelerationStructureFeatures.accelerationStructure = VK_TRUE;
-        accelerationStructureFeatures.pNext = &bufferDeviceAddressFeatures; 
- 
-        VkPhysicalDeviceRayTracingPipelineFeaturesKHR rayTracingPipelineFeatures{};
-        rayTracingPipelineFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR;
-        rayTracingPipelineFeatures.rayTracingPipeline = VK_TRUE;
-        rayTracingPipelineFeatures.pNext = &accelerationStructureFeatures; 
+        } 
 
         VkPhysicalDeviceFeatures enabledFeatures = {};
-        enabledFeatures.samplerAnisotropy = VK_TRUE; 
+        enabledFeatures.samplerAnisotropy = VK_TRUE;
 
         VkDeviceCreateInfo createInfo{};
         createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -646,11 +605,11 @@ private:
         createInfo.pQueueCreateInfos = queueCreateInfos.data();
 
         createInfo.pEnabledFeatures = &enabledFeatures;
+         
+        createInfo.pNext = nullptr;
 
         createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());;
         createInfo.ppEnabledExtensionNames = deviceExtensions.data();
-
-        createInfo.pNext = &rayTracingPipelineFeatures;
 
         if (enableValidationLayers)
         {
@@ -669,25 +628,6 @@ private:
 
         vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
         vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
-    }
-
-    #pragma endregion
-
-    #pragma region QueryRayTracingProperties()
-    void queryRayTracingProperties()
-    {
-        rayTracingPipelineProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR;
-
-        accelerationStructureProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR;
-        accelerationStructureProperties.pNext = nullptr;
-
-        rayTracingPipelineProperties.pNext = &accelerationStructureProperties;
-
-        VkPhysicalDeviceProperties2 properties2{};
-        properties2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
-        properties2.pNext = &rayTracingPipelineProperties;
-
-        vkGetPhysicalDeviceProperties2(physicalDevice, &properties2);
     }
 
     #pragma endregion
@@ -1265,7 +1205,7 @@ private:
         storageImageLayoutBinding.descriptorCount = 1;
         storageImageLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         storageImageLayoutBinding.pImmutableSamplers = nullptr;
-        storageImageLayoutBinding.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
+        storageImageLayoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
         std::array<VkDescriptorSetLayoutBinding, 1> bindings = {storageImageLayoutBinding};
         VkDescriptorSetLayoutCreateInfo layoutInfo{};
@@ -1273,7 +1213,7 @@ private:
         layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
         layoutInfo.pBindings = bindings.data();
 
-        if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &rtDescriptorSetLayout) != VK_SUCCESS)
+        if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS)
         {
             throw std::runtime_error("failed to create RT descriptor set layout!");
         }
@@ -1291,7 +1231,7 @@ private:
         poolInfo.pPoolSizes = poolSizes.data();
         poolInfo.maxSets = 1;
 
-        if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &rtDescriptorPool) != VK_SUCCESS)
+        if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS)
         {
             throw std::runtime_error("failed to create RT descriptor pool!");
         }
@@ -1299,14 +1239,14 @@ private:
 
     void createDescriptorSets()
     {
-        std::array<VkDescriptorSetLayout, 1> layouts = {rtDescriptorSetLayout};
+        std::array<VkDescriptorSetLayout, 1> layouts = {descriptorSetLayout};
         VkDescriptorSetAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        allocInfo.descriptorPool = rtDescriptorPool;
+        allocInfo.descriptorPool = descriptorPool;
         allocInfo.descriptorSetCount = 1;
         allocInfo.pSetLayouts = layouts.data();
 
-        if (vkAllocateDescriptorSets(device, &allocInfo, &rtDescriptorSet) != VK_SUCCESS)
+        if (vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet) != VK_SUCCESS)
         {
             throw std::runtime_error("failed to allocate RT descriptor sets!");
         }
@@ -1319,7 +1259,7 @@ private:
         std::array<VkWriteDescriptorSet, 1> descriptorWrites{};
 
         descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[0].dstSet = rtDescriptorSet;
+        descriptorWrites[0].dstSet = descriptorSet;
         descriptorWrites[0].dstBinding = 0;
         descriptorWrites[0].dstArrayElement = 0;
         descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
@@ -1331,83 +1271,39 @@ private:
 
     #pragma endregion
 
-    #pragma region CreatePipelineAndSBT()
+    #pragma region CreatePipeline()
     void createPipeline()
     {
         VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
         pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         pipelineLayoutInfo.setLayoutCount = 1;
-        pipelineLayoutInfo.pSetLayouts = &rtDescriptorSetLayout;
+        pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
 
-        if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &rtPipelineLayout) != VK_SUCCESS)
+        if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS)
         {
-            throw std::runtime_error("failed to create RT pipeline layout!");
+            throw std::runtime_error("failed to create compute pipeline layout!");
+        }
+         
+        auto computeShaderCode = readFile("shaders/comp.spv");
+        VkShaderModule computeShaderModule = createShaderModule(computeShaderCode);
+
+        VkPipelineShaderStageCreateInfo computeShaderStageInfo{};
+        computeShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        computeShaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT; 
+        computeShaderStageInfo.module = computeShaderModule;
+        computeShaderStageInfo.pName = "main";
+         
+        VkComputePipelineCreateInfo pipelineInfo{};
+        pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+        pipelineInfo.layout = pipelineLayout;
+        pipelineInfo.stage = computeShaderStageInfo;
+         
+        if (vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to create compute pipeline!");
         }
 
-        auto raygenShaderCode = readFile("shaders/raygen.spv");
-        auto missShaderCode = readFile("shaders/miss.spv");
-
-        VkShaderModule raygenShaderModule = createShaderModule(raygenShaderCode);
-        VkShaderModule missShaderModule = createShaderModule(missShaderCode);
-
-        std::vector<VkPipelineShaderStageCreateInfo> stages;
-        
-        VkPipelineShaderStageCreateInfo raygenStage{};
-        raygenStage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        raygenStage.stage = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
-        raygenStage.module = raygenShaderModule;
-        raygenStage.pName = "main";
-        stages.push_back(raygenStage);
-
-        VkPipelineShaderStageCreateInfo missStage{};
-        missStage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        missStage.stage = VK_SHADER_STAGE_MISS_BIT_KHR;
-        missStage.module = missShaderModule;
-        missStage.pName = "main";
-        stages.push_back(missStage);
-
-        std::vector<VkRayTracingShaderGroupCreateInfoKHR> groups;
-
-        VkRayTracingShaderGroupCreateInfoKHR raygenGroup{};
-        raygenGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
-        raygenGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
-        raygenGroup.generalShader = 0; 
-        raygenGroup.closestHitShader = VK_SHADER_UNUSED_KHR;
-        raygenGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
-        raygenGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
-        groups.push_back(raygenGroup);
-
-        VkRayTracingShaderGroupCreateInfoKHR missGroup{};
-        missGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
-        missGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
-        missGroup.generalShader = 1;
-        missGroup.closestHitShader = VK_SHADER_UNUSED_KHR;
-        missGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
-        missGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
-        groups.push_back(missGroup);
-
-        VkRayTracingPipelineCreateInfoKHR pipelineInfo{};
-        pipelineInfo.sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR;
-        pipelineInfo.stageCount = static_cast<uint32_t>(stages.size());
-        pipelineInfo.pStages = stages.data();
-        pipelineInfo.groupCount = static_cast<uint32_t>(groups.size());
-        pipelineInfo.pGroups = groups.data();
-        pipelineInfo.maxPipelineRayRecursionDepth = 1;
-        pipelineInfo.layout = rtPipelineLayout;
-
-        auto vkCreateRayTracingPipelinesKHR = reinterpret_cast<PFN_vkCreateRayTracingPipelinesKHR>(vkGetDeviceProcAddr(device, "vkCreateRayTracingPipelinesKHR"));
-        if (!vkCreateRayTracingPipelinesKHR)
-        {
-            throw std::runtime_error("vkCreateRayTracingPipelinesKHR not found!");
-        }
-
-        if (vkCreateRayTracingPipelinesKHR(device, VK_NULL_HANDLE, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &rtPipeline) != VK_SUCCESS)
-        {
-            throw std::runtime_error("failed to create RT pipeline!");
-        }
-
-        vkDestroyShaderModule(device, raygenShaderModule, nullptr);
-        vkDestroyShaderModule(device, missShaderModule, nullptr);
+        vkDestroyShaderModule(device, computeShaderModule, nullptr);
     }
 
     static std::vector<char> readFile(const std::string& filename)
@@ -1442,97 +1338,6 @@ private:
         }
 
         return shaderModule;
-    }
-
-    void createShaderBindingTable()
-    {
-        auto vkGetRayTracingShaderGroupHandlesKHR = reinterpret_cast<PFN_vkGetRayTracingShaderGroupHandlesKHR>(vkGetDeviceProcAddr(device, "vkGetRayTracingShaderGroupHandlesKHR"));
-        if (!vkGetRayTracingShaderGroupHandlesKHR)
-        {
-            throw std::runtime_error("vkGetRayTracingShaderGroupHandlesKHR not found!");
-        }
-
-        uint32_t handleSize = rayTracingPipelineProperties.shaderGroupHandleSize;
-        uint32_t baseAlignment = rayTracingPipelineProperties.shaderGroupBaseAlignment;
-
-        uint32_t handleSizeAligned = (handleSize + baseAlignment - 1) & ~(baseAlignment - 1);
-
-        uint32_t groupCount = 2;
-        uint32_t sbtSize = groupCount * handleSizeAligned;
-
-        std::vector<uint8_t> shaderHandleStorage(groupCount * handleSize);
-        if (vkGetRayTracingShaderGroupHandlesKHR(device, rtPipeline, 0, groupCount, shaderHandleStorage.size(), shaderHandleStorage.data()) != VK_SUCCESS)
-        {
-            throw std::runtime_error("failed to get RT shader group handles!");
-        }
-
-        VkBufferCreateInfo bufferInfo{};
-        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferInfo.size = sbtSize;
-        bufferInfo.usage = VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
-
-        if (vkCreateBuffer(device, &bufferInfo, nullptr, &rtSBTBuffer) != VK_SUCCESS)
-        {
-            throw std::runtime_error("failed to create SBT buffer!");
-        }
-
-        VkMemoryRequirements memRequirements;
-        vkGetBufferMemoryRequirements(device, rtSBTBuffer, &memRequirements);
-
-        VkMemoryAllocateFlagsInfo allocateFlagsInfo{};
-        allocateFlagsInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
-        allocateFlagsInfo.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
-
-        VkMemoryAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocInfo.pNext = &allocateFlagsInfo;
-        allocInfo.allocationSize = memRequirements.size;
-        allocInfo.memoryTypeIndex = findMemoryTypeIndex(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-        if (vkAllocateMemory(device, &allocInfo, nullptr, &rtSBTBufferMemory) != VK_SUCCESS)
-        {
-            throw std::runtime_error("failed to allocate SBT buffer memory!");
-        }
-
-        vkBindBufferMemory(device, rtSBTBuffer, rtSBTBufferMemory, 0);
-
-        void* data;
-        vkMapMemory(device, rtSBTBufferMemory, 0, sbtSize, 0, &data);
-        uint8_t* mappedData = static_cast<uint8_t*>(data);
-
-        for (uint32_t i = 0; i < groupCount; i++)
-        {
-            memcpy(mappedData + (i * handleSizeAligned), shaderHandleStorage.data() + (i * handleSize), handleSize);
-        }
-
-        vkUnmapMemory(device, rtSBTBufferMemory);
-
-        auto vkGetBufferDeviceAddressKHR = reinterpret_cast<PFN_vkGetBufferDeviceAddressKHR>(vkGetDeviceProcAddr(device, "vkGetBufferDeviceAddressKHR"));
-        if (!vkGetBufferDeviceAddressKHR)
-        {
-            throw std::runtime_error("vkGetBufferDeviceAddressKHR not found!");
-        }
-
-        VkBufferDeviceAddressInfoKHR bufferDeviceAddressInfo{};
-        bufferDeviceAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
-        bufferDeviceAddressInfo.buffer = rtSBTBuffer;
-        VkDeviceAddress sbtAddress = vkGetBufferDeviceAddressKHR(device, &bufferDeviceAddressInfo);
-
-        raygenShaderSbtEntry.deviceAddress = sbtAddress;
-        raygenShaderSbtEntry.stride = handleSizeAligned;
-        raygenShaderSbtEntry.size = handleSizeAligned;
-
-        missShaderSbtEntry.deviceAddress = sbtAddress + handleSizeAligned;
-        missShaderSbtEntry.stride = handleSizeAligned;
-        missShaderSbtEntry.size = handleSizeAligned;
-
-        hitShaderSbtEntry.deviceAddress = 0;
-        hitShaderSbtEntry.stride = 0;
-        hitShaderSbtEntry.size = 0;
-
-        callableShaderSbtEntry.deviceAddress = 0;
-        callableShaderSbtEntry.stride = 0;
-        callableShaderSbtEntry.size = 0;
     }
     
     #pragma endregion
@@ -1774,15 +1579,15 @@ private:
         VkCommandBufferBeginInfo beginInfo{};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
-        if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) 
+        if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS)
         {
             throw std::runtime_error("failed to begin recording command buffer!");
         }
-
+             
         VkImageMemoryBarrier storageImageBarrier{};
         storageImageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         storageImageBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        storageImageBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+        storageImageBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL; 
         storageImageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         storageImageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         storageImageBarrier.image = storageImage;
@@ -1797,82 +1602,58 @@ private:
         vkCmdPipelineBarrier(
             commandBuffer,
             VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-            VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 
             0,
             0, nullptr,
             0, nullptr,
             1, &storageImageBarrier
         );
+             
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline); 
 
-        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, rtPipeline);
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
+             
+        uint32_t groupCountX = (swapChainExtent.width + 15) / 16;
+        uint32_t groupCountY = (swapChainExtent.height + 15) / 16;
 
-        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, rtPipelineLayout, 0, 1, &rtDescriptorSet, 0, nullptr);
-
-        auto vkCmdTraceRaysKHR = reinterpret_cast<PFN_vkCmdTraceRaysKHR>(vkGetDeviceProcAddr(device, "vkCmdTraceRaysKHR"));
-        if (!vkCmdTraceRaysKHR)
-        {
-            throw std::runtime_error("vkCmdTraceRaysKHR not found!");
-        }
-
-        vkCmdTraceRaysKHR(
-            commandBuffer,
-            &raygenShaderSbtEntry,
-            &missShaderSbtEntry,
-            &hitShaderSbtEntry,
-            &callableShaderSbtEntry,
-            swapChainExtent.width,
-            swapChainExtent.height,
-            1
-        );
-
-        VkImageMemoryBarrier rayTracingBarrier{};
-        rayTracingBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        rayTracingBarrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
-        rayTracingBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-        rayTracingBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        rayTracingBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        rayTracingBarrier.image = storageImage;
-        rayTracingBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        rayTracingBarrier.subresourceRange.baseMipLevel = 0;
-        rayTracingBarrier.subresourceRange.levelCount = 1;
-        rayTracingBarrier.subresourceRange.baseArrayLayer = 0;
-        rayTracingBarrier.subresourceRange.layerCount = 1;
-        rayTracingBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-        rayTracingBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-
+        vkCmdDispatch(commandBuffer, groupCountX, groupCountY, 1);  
+             
+        VkImageMemoryBarrier computeToTransferBarrier{};
+        computeToTransferBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        computeToTransferBarrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+        computeToTransferBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        computeToTransferBarrier.image = storageImage;
+        computeToTransferBarrier.subresourceRange = storageImageBarrier.subresourceRange; 
+        computeToTransferBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        computeToTransferBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+             
         VkImageMemoryBarrier swapChainBarrier{};
         swapChainBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         swapChainBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         swapChainBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        swapChainBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        swapChainBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         swapChainBarrier.image = swapChainImages[imageIndex];
-        swapChainBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        swapChainBarrier.subresourceRange.baseMipLevel = 0;
-        swapChainBarrier.subresourceRange.levelCount = 1;
-        swapChainBarrier.subresourceRange.baseArrayLayer = 0;
-        swapChainBarrier.subresourceRange.layerCount = 1;
+        swapChainBarrier.subresourceRange = storageImageBarrier.subresourceRange;
         swapChainBarrier.srcAccessMask = 0;
         swapChainBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 
-        std::array<VkImageMemoryBarrier, 2> barriers = {rayTracingBarrier, swapChainBarrier};
+        std::array<VkImageMemoryBarrier, 2> barriers = { computeToTransferBarrier, swapChainBarrier };
 
         vkCmdPipelineBarrier(
             commandBuffer,
-            VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
-            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,  
+            VK_PIPELINE_STAGE_TRANSFER_BIT, 
             0,
             0, nullptr,
             0, nullptr,
             static_cast<uint32_t>(barriers.size()), barriers.data()
         );
-         
+             
         VkImageCopy copyRegion{};
-        copyRegion.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-        copyRegion.srcOffset = {0, 0, 0};
-        copyRegion.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-        copyRegion.dstOffset = {0, 0, 0};
-        copyRegion.extent = {swapChainExtent.width, swapChainExtent.height, 1};
+        copyRegion.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+        copyRegion.srcOffset = { 0, 0, 0 };
+        copyRegion.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+        copyRegion.dstOffset = { 0, 0, 0 };
+        copyRegion.extent = { swapChainExtent.width, swapChainExtent.height, 1 };
 
         vkCmdCopyImage(
             commandBuffer,
@@ -1880,19 +1661,13 @@ private:
             swapChainImages[imageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
             1, &copyRegion
         );
-         
+             
         VkImageMemoryBarrier presentBarrier{};
         presentBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         presentBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         presentBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-        presentBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        presentBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         presentBarrier.image = swapChainImages[imageIndex];
-        presentBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        presentBarrier.subresourceRange.baseMipLevel = 0;
-        presentBarrier.subresourceRange.levelCount = 1;
-        presentBarrier.subresourceRange.baseArrayLayer = 0;
-        presentBarrier.subresourceRange.layerCount = 1;
+        presentBarrier.subresourceRange = storageImageBarrier.subresourceRange;
         presentBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
         presentBarrier.dstAccessMask = 0;
 
@@ -1906,9 +1681,10 @@ private:
             1, &presentBarrier
         );
 
-        if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
+        if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) 
+        {
             throw std::runtime_error("failed to record command buffer!");
-        }
+        } 
     }
 
     void recreateSwapChain()
@@ -1970,26 +1746,21 @@ private:
 
         cleanupSwapChain();
 
-        if (rtSBTBuffer != VK_NULL_HANDLE)
+        if (pipeline != VK_NULL_HANDLE)
         {
-            vkDestroyBuffer(device, rtSBTBuffer, nullptr);
-            vkFreeMemory(device, rtSBTBufferMemory, nullptr);
+            vkDestroyPipeline(device, pipeline, nullptr);
         }
-        if (rtPipeline != VK_NULL_HANDLE)
+        if (pipelineLayout != VK_NULL_HANDLE)
         {
-            vkDestroyPipeline(device, rtPipeline, nullptr);
+            vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
         }
-        if (rtPipelineLayout != VK_NULL_HANDLE)
+        if (descriptorPool != VK_NULL_HANDLE)
         {
-            vkDestroyPipelineLayout(device, rtPipelineLayout, nullptr);
+            vkDestroyDescriptorPool(device, descriptorPool, nullptr);
         }
-        if (rtDescriptorPool != VK_NULL_HANDLE)
+        if (descriptorSetLayout != VK_NULL_HANDLE)
         {
-            vkDestroyDescriptorPool(device, rtDescriptorPool, nullptr);
-        }
-        if (rtDescriptorSetLayout != VK_NULL_HANDLE)
-        {
-            vkDestroyDescriptorSetLayout(device, rtDescriptorSetLayout, nullptr);
+            vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
         }
 
         if (textureSampler != VK_NULL_HANDLE)

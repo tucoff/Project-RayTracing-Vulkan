@@ -1,0 +1,23 @@
+#version 450
+layout(local_size_x = 16, local_size_y = 16) in;
+layout(binding = 0, rgba8) uniform writeonly image2D storageImage;
+
+void main() 
+{
+    ivec2 pixel_coords = ivec2(gl_GlobalInvocationID.xy);
+
+    ivec2 screen_size = imageSize(storageImage);
+
+    if (pixel_coords.x >= screen_size.x || pixel_coords.y >= screen_size.y) 
+    {
+        return;
+    }
+
+    float r = float(pixel_coords.x) / float(screen_size.x - 1);
+    
+    float g = float(pixel_coords.y) / float(screen_size.y - 1);
+    
+    float b = 0.0;
+
+    imageStore(storageImage, pixel_coords, vec4(r, g, b, 1.0));
+}
