@@ -25,10 +25,10 @@ struct HitResult
     vec3 color;
 };
  
-const int MAX_STEPS = 2000;
+const int MAX_STEPS = 1000;
 const float STEP_SIZE = 0.01;
-const float G = 0.5;
-const float SPHERE_MASS = 3.0;
+const float G = 0.3;
+const float SPHERE_MASS = 1.0;
  
 const vec3 SPHERE_POS = vec3(0.0, 0.0, -1.0);
 const float SPHERE_RADIUS = 0.5;

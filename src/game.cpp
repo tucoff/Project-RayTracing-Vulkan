@@ -1524,7 +1524,6 @@ private:
             relativisticViewEnabled = !relativisticViewEnabled;
 			std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
-
     }
 
 #pragma endregion
