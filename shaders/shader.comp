@@ -33,8 +33,8 @@ const float SPHERE_MASS = 1.0;
 const vec3 SPHERE_POS = vec3(0.0, 0.0, -1.0);
 const float SPHERE_RADIUS = 0.5;
 const vec3 RING_NORMAL = normalize(vec3(0.3, 1.0, 0.3));
-const float RING_INNER = 0.6;
-const float RING_OUTER = 1.0; 
+const float RING_INNER = 0.7;
+const float RING_OUTER = 1.4; 
 
 bool hit_sphere(vec3 center, float radius, Ray ray, out float t_hit)
 {
@@ -89,8 +89,8 @@ HitResult calculate_ray_collision(Ray r)
         if (t_sphere < closestHit.dst) {
             closestHit.didHit = true;
             closestHit.dst = t_sphere;
-            closestHit.color = vec3(1.0, 0.0, 0.0); 
-            if (!cam.relativistic_view_enabled) closestHit.color = vec3(0.0, 1.0, 0.0); 
+            closestHit.color = vec3(0.0, 0.0, 0.0); 
+            if (!cam.relativistic_view_enabled) closestHit.color = vec3(0.74, 0.74, 0.74); 
         }
     }
      
@@ -98,7 +98,7 @@ HitResult calculate_ray_collision(Ray r)
         if (t_ring < closestHit.dst) {
             closestHit.didHit = true;
             closestHit.dst = t_ring;
-            closestHit.color = vec3(0.0, 0.0, 1.0); 
+            closestHit.color = vec3(1.0, 1.0, 1.0); 
         }
     }
 
@@ -108,7 +108,7 @@ HitResult calculate_ray_collision(Ray r)
 vec3 get_sky_color(vec3 direction) {
     vec3 unit_direction = normalize(direction);
     float t = 0.5 * (unit_direction.y + 1.0);
-    return mix(vec3(0.5, 0.7, 1.0), vec3(0.0, 0.0, 0.0), t);
+    return mix(vec3(0.65, 0.0, 0.65), vec3(0.0, 0.65, 0.0), t);
 } 
 
 void main() 
