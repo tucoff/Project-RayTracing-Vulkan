@@ -1,91 +1,43 @@
 # ninja log v6
-11	211	7888512463996931	CMakeFiles/sync_assets	bfc205bf25cfdb31
-11	211	7888512463996931	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-218	695	7888512466061256	CMakeFiles/VulkanGame.dir/src/main.cpp.obj	919279b309a0301f
+31	282	7891785596498455	CMakeFiles/sync_assets	bfc205bf25cfdb31
+31	282	7891785596498455	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
 225	952	7888512466131440	CMakeFiles/VulkanGame.dir/src/utils.cpp.obj	302255ca6a6084ff
-212	1575	7888512466006142	CMakeFiles/VulkanGame.dir/src/game.cpp.obj	dde1929f721b6d24
-1577	2264	7888512479661853	bin/VulkanGame.exe	2d3ec98c0096b5d8
-38	283	7888513047130668	CMakeFiles/sync_assets	bfc205bf25cfdb31
-38	283	7888513047130668	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-28	273	7888515100380568	CMakeFiles/sync_assets	bfc205bf25cfdb31
-28	273	7888515100380568	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-29	283	7888515866010339	CMakeFiles/sync_assets	bfc205bf25cfdb31
-29	283	7888515866010339	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-284	1719	7888515868541158	CMakeFiles/VulkanGame.dir/src/game.cpp.obj	dde1929f721b6d24
-1720	2285	7888515882915274	bin/VulkanGame.exe	2d3ec98c0096b5d8
-38	280	7888516328131607	CMakeFiles/sync_assets	bfc205bf25cfdb31
-38	280	7888516328131607	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-281	1586	7888516330563460	CMakeFiles/VulkanGame.dir/src/game.cpp.obj	dde1929f721b6d24
-1587	2159	7888516343618821	bin/VulkanGame.exe	2d3ec98c0096b5d8
-35	274	7888517014682640	CMakeFiles/sync_assets	bfc205bf25cfdb31
-35	274	7888517014682640	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-28	275	7888519140836915	CMakeFiles/sync_assets	bfc205bf25cfdb31
-28	275	7888519140836915	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-29	277	7888520057669445	CMakeFiles/sync_assets	bfc205bf25cfdb31
-29	277	7888520057669445	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-277	1627	7888520060135321	CMakeFiles/VulkanGame.dir/src/game.cpp.obj	dde1929f721b6d24
-1628	2226	7888520073648581	bin/VulkanGame.exe	2d3ec98c0096b5d8
-34	275	7888522095769243	CMakeFiles/sync_assets	bfc205bf25cfdb31
-34	275	7888522095769243	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-275	1606	7888522098177179	CMakeFiles/VulkanGame.dir/src/game.cpp.obj	dde1929f721b6d24
-1607	2176	7888522111500439	bin/VulkanGame.exe	2d3ec98c0096b5d8
-35	274	7888522383094133	CMakeFiles/sync_assets	bfc205bf25cfdb31
-35	274	7888522383094133	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-29	273	7888522794150311	CMakeFiles/sync_assets	bfc205bf25cfdb31
-29	273	7888522794150311	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-27	262	7888523356944188	CMakeFiles/sync_assets	bfc205bf25cfdb31
-27	262	7888523356944188	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-27	277	7888523919562750	CMakeFiles/sync_assets	bfc205bf25cfdb31
-27	277	7888523919562750	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-28	265	7888526375858775	CMakeFiles/sync_assets	bfc205bf25cfdb31
-28	265	7888526375858775	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-32	340	7888530678748327	CMakeFiles/sync_assets	bfc205bf25cfdb31
-32	340	7888530678748327	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-340	1929	7888530681830271	CMakeFiles/VulkanGame.dir/src/game.cpp.obj	dde1929f721b6d24
-1930	2485	7888530697725373	bin/VulkanGame.exe	2d3ec98c0096b5d8
-33	273	7888531134483284	CMakeFiles/sync_assets	bfc205bf25cfdb31
-33	273	7888531134483284	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-29	272	7888536705685394	CMakeFiles/sync_assets	bfc205bf25cfdb31
-29	272	7888536705685394	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-74	381	7891147611024401	CMakeFiles/sync_assets	bfc205bf25cfdb31
-74	381	7891147611024401	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-382	1945	7891147614108715	CMakeFiles/VulkanGame.dir/src/game.cpp.obj	dde1929f721b6d24
-1946	2724	7891147629750102	bin/VulkanGame.exe	2d3ec98c0096b5d8
-38	277	7891148825391910	CMakeFiles/sync_assets	bfc205bf25cfdb31
-38	277	7891148825391910	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-29	269	7891150369349922	CMakeFiles/sync_assets	bfc205bf25cfdb31
-29	269	7891150369349922	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-27	264	7891150656348548	CMakeFiles/sync_assets	bfc205bf25cfdb31
-27	264	7891150656348548	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-29	270	7891151008717618	CMakeFiles/sync_assets	bfc205bf25cfdb31
-29	270	7891151008717618	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-28	269	7891154451333668	CMakeFiles/sync_assets	bfc205bf25cfdb31
-28	269	7891154451333668	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-27	263	7891157884998332	CMakeFiles/sync_assets	bfc205bf25cfdb31
-27	263	7891157884998332	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-17	259	7891161399645416	CMakeFiles/sync_assets	bfc205bf25cfdb31
-17	259	7891161399645416	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-28	286	7891172688374703	CMakeFiles/sync_assets	bfc205bf25cfdb31
-28	286	7891172688374703	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-286	1912	7891172690959026	CMakeFiles/VulkanGame.dir/src/game.cpp.obj	dde1929f721b6d24
-1913	2551	7891172707226890	bin/VulkanGame.exe	2d3ec98c0096b5d8
-38	285	7891173135190491	CMakeFiles/sync_assets	bfc205bf25cfdb31
-38	285	7891173135190491	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-285	1614	7891173137668139	CMakeFiles/VulkanGame.dir/src/game.cpp.obj	dde1929f721b6d24
-1615	2152	7891173150963795	bin/VulkanGame.exe	2d3ec98c0096b5d8
-41	292	7891174285085447	CMakeFiles/sync_assets	bfc205bf25cfdb31
-41	292	7891174285085447	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-293	1661	7891174287598726	CMakeFiles/VulkanGame.dir/src/game.cpp.obj	dde1929f721b6d24
-1662	2231	7891174301299898	bin/VulkanGame.exe	2d3ec98c0096b5d8
-37	282	7891174734260554	CMakeFiles/sync_assets	bfc205bf25cfdb31
-37	282	7891174734260554	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-29	268	7891174796717077	CMakeFiles/sync_assets	bfc205bf25cfdb31
-29	268	7891174796717077	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-28	270	7891176398351738	CMakeFiles/sync_assets	bfc205bf25cfdb31
-28	270	7891176398351738	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-270	1613	7891176400771976	CMakeFiles/VulkanGame.dir/src/game.cpp.obj	dde1929f721b6d24
-1614	2185	7891176414217919	bin/VulkanGame.exe	2d3ec98c0096b5d8
-35	296	7891177981769054	CMakeFiles/sync_assets	bfc205bf25cfdb31
-35	296	7891177981769054	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
-297	1663	7891177984383559	CMakeFiles/VulkanGame.dir/src/game.cpp.obj	dde1929f721b6d24
-1664	2393	7891177998059057	bin/VulkanGame.exe	2d3ec98c0096b5d8
+218	695	7888512466061256	CMakeFiles/VulkanGame.dir/src/main.cpp.obj	919279b309a0301f
+283	1627	7891785599030939	CMakeFiles/VulkanGame.dir/src/game.cpp.obj	dde1929f721b6d24
+1628	2246	7891785612471870	bin/VulkanGame.exe	2d3ec98c0096b5d8
+39	291	7891825599963610	CMakeFiles/sync_assets	bfc205bf25cfdb31
+39	291	7891825599963610	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
+291	1897	7891825602486627	CMakeFiles/VulkanGame.dir/src/game.cpp.obj	dde1929f721b6d24
+1898	2513	7891825618552000	bin/VulkanGame.exe	2d3ec98c0096b5d8
+35	286	7891827942726781	CMakeFiles/sync_assets	bfc205bf25cfdb31
+35	286	7891827942726781	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
+46	332	7891894626141876	CMakeFiles/sync_assets	bfc205bf25cfdb31
+46	332	7891894626141876	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
+333	1961	7891894629023605	CMakeFiles/VulkanGame.dir/src/game.cpp.obj	dde1929f721b6d24
+1961	2716	7891894645298401	bin/VulkanGame.exe	2d3ec98c0096b5d8
+38	288	7891898161068008	CMakeFiles/sync_assets	bfc205bf25cfdb31
+38	288	7891898161068008	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
+288	1668	7891898163567835	CMakeFiles/VulkanGame.dir/src/game.cpp.obj	dde1929f721b6d24
+1670	2344	7891898177375569	bin/VulkanGame.exe	2d3ec98c0096b5d8
+39	296	7891898901654049	CMakeFiles/sync_assets	bfc205bf25cfdb31
+39	296	7891898901654049	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
+297	1701	7891898904226208	CMakeFiles/VulkanGame.dir/src/game.cpp.obj	dde1929f721b6d24
+1702	2338	7891898918286215	bin/VulkanGame.exe	2d3ec98c0096b5d8
+36	291	7891900726807708	CMakeFiles/sync_assets	bfc205bf25cfdb31
+36	291	7891900726807708	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
+292	1695	7891900729373444	CMakeFiles/VulkanGame.dir/src/game.cpp.obj	dde1929f721b6d24
+1696	2265	7891900743407669	bin/VulkanGame.exe	2d3ec98c0096b5d8
+34	278	7891901098574842	CMakeFiles/sync_assets	bfc205bf25cfdb31
+34	278	7891901098574842	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
+279	1630	7891901101015846	CMakeFiles/VulkanGame.dir/src/game.cpp.obj	dde1929f721b6d24
+1631	2209	7891901114548052	bin/VulkanGame.exe	2d3ec98c0096b5d8
+35	276	7891936240034807	CMakeFiles/sync_assets	bfc205bf25cfdb31
+35	276	7891936240034807	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
+27	272	7891939687859499	CMakeFiles/sync_assets	bfc205bf25cfdb31
+27	272	7891939687859499	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
+30	272	7891941464906236	CMakeFiles/sync_assets	bfc205bf25cfdb31
+30	272	7891941464906236	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
+27	275	7891944232820770	CMakeFiles/sync_assets	bfc205bf25cfdb31
+27	275	7891944232820770	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31
+27	272	7891944912026994	CMakeFiles/sync_assets	bfc205bf25cfdb31
+27	272	7891944912026994	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/out/build/x64-Debug/CMakeFiles/sync_assets	bfc205bf25cfdb31

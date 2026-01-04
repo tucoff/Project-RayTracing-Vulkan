@@ -25,6 +25,7 @@
 #include <cstdint>
 #include <limits>
 #include <algorithm>
+#include <thread>
 
 #pragma endregion
 
@@ -38,6 +39,9 @@ const int MAX_FRAMES_IN_FLIGHT = 4;
 
 const float CAMERA_SPEED = 2.5f;
 const float MOUSE_SENSITIVITY = 0.05f;
+
+bool relativisticViewEnabled = false;
+bool traceMode = false;
 
 const std::vector<const char*> validationLayers =
 {
@@ -82,6 +86,7 @@ struct CameraUBO {
     alignas(16) glm::vec3 lower_left_corner;
     alignas(16) glm::vec3 horizontal;
     alignas(16) glm::vec3 vertical;
+	alignas(4) bool relativistic_view_enabled;
 };
 
 #pragma endregion
@@ -1249,7 +1254,7 @@ private:
 
         VkDescriptorPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-
+		poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
         poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
         poolInfo.pPoolSizes = poolSizes.data();
          
@@ -1452,6 +1457,8 @@ private:
 
     void processMouseMovement(float xpos, float ypos) 
     {
+		if (traceMode) return;
+
         if (firstMouse) 
         {
             hX = xpos;
@@ -1460,7 +1467,7 @@ private:
         }
 
         float xoffset = xpos - hX;
-        float yoffset = hY - ypos; 
+        float yoffset = ypos - hY; 
         hX = xpos;
         hY = ypos;
 
@@ -1486,6 +1493,8 @@ private:
     {
         float speed = CAMERA_SPEED * deltaTime;
 
+        if (traceMode) speed = 0.0f;
+
         if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
             cameraPos += speed * cameraFront;
         if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
@@ -1495,12 +1504,27 @@ private:
         if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
             cameraPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * speed;
         if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
-            cameraPos += speed * cameraUp;
-        if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
             cameraPos -= speed * cameraUp;
+        if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
+            cameraPos += speed * cameraUp;
             
         if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
             glfwSetWindowShouldClose(window, true);
+
+        if (glfwGetKey(window, GLFW_KEY_T) == GLFW_PRESS)
+        {
+            traceMode = !traceMode;
+            if (!traceMode) glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+			else glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+
+        if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS)
+        {
+            relativisticViewEnabled = !relativisticViewEnabled;
+			std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+
     }
 
 #pragma endregion
@@ -1515,6 +1539,7 @@ private:
             lastFrame = currentTime;
 
             glfwPollEvents();
+
             processInput();
 
             glfwSetWindowPos(window, (1920/2)-WIDTH/2, (1080/2)-HEIGHT/2);
@@ -1792,6 +1817,7 @@ private:
         ubo.lower_left_corner = lower_left_corner;
         ubo.horizontal = horizontal;
         ubo.vertical = vertical;
+		ubo.relativistic_view_enabled = relativisticViewEnabled ? 1 : 0;
          
         memcpy(cameraBuffersMapped[currentImage], &ubo, sizeof(ubo));
     }
