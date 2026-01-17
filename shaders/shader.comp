@@ -9,7 +9,7 @@ layout(binding = 1) uniform CameraUBO
     vec3 lower_left_corner;
     vec3 horizontal;
     vec3 vertical;
-    bool relativistic_view_enabled;
+    bool relativistic_view_enabled; 
 } cam;
 
 struct Ray 
@@ -25,16 +25,21 @@ struct HitResult
     vec3 color;
 };
  
-const int MAX_STEPS = 1000;
-const float STEP_SIZE = 0.01;
-const float G = 0.3;
-const float SPHERE_MASS = 1.0;
+const float G_REAL = 6.67430e-11;
+const float C_REAL = 299792458.0;
+const float SOLAR_MASS = 1.989e30;
+const float MASS = 10.0 * SOLAR_MASS;
  
-const vec3 SPHERE_POS = vec3(0.0, 0.0, -1.0);
-const float SPHERE_RADIUS = 0.5;
+const float RS_KM = (2.0 * G_REAL * MASS) / (C_REAL * C_REAL) / 1000.0; 
+
+const int MAX_STEPS = 1000;
+const float STEP_SIZE = 1.0; 
+
+const vec3 SPHERE_POS = vec3(0.0, 0.0, -150.0); 
+const float SPHERE_RADIUS = RS_KM;
 const vec3 RING_NORMAL = normalize(vec3(0.3, 1.0, 0.3));
-const float RING_INNER = 0.7;
-const float RING_OUTER = 1.4; 
+const float RING_INNER = RS_KM * 2.0; 
+const float RING_OUTER = RS_KM * 5.0; 
 
 bool hit_sphere(vec3 center, float radius, Ray ray, out float t_hit)
 {
@@ -75,15 +80,15 @@ bool hit_ring(vec3 center, vec3 normal, float inner_radius, float outer_radius, 
     }
     return false;
 }
- 
+
 HitResult calculate_ray_collision(Ray r) 
 {
     HitResult closestHit;
     closestHit.didHit = false;
-    closestHit.dst = 1.0 / 0.0; 
+    closestHit.dst = 1e10; 
 
-    float t_sphere = 10000.0;
-    float t_ring = 10000.0;
+    float t_sphere = 1e10;
+    float t_ring = 1e10;
      
     if (hit_sphere(SPHERE_POS, SPHERE_RADIUS, r, t_sphere)) {
         if (t_sphere < closestHit.dst) {
@@ -108,7 +113,8 @@ HitResult calculate_ray_collision(Ray r)
 vec3 get_sky_color(vec3 direction) {
     vec3 unit_direction = normalize(direction);
     float t = 0.5 * (unit_direction.y + 1.0);
-    return mix(vec3(0.65, 0.0, 0.65), vec3(0.0, 0.65, 0.0), t);
+    float f = 0.5 * (unit_direction.x + 1.0);
+    return mix(vec3(f, 0.0, 0.65), vec3(f, 0.65, 0.0), t); 
 } 
 
 void main() 
@@ -149,25 +155,22 @@ void main()
                 break; 
             }
              
-            vec3 totalDeflection = vec3(0.0);
             vec3 toSphere = SPHERE_POS - curvedRay.origin;
             float dist = length(toSphere);
-
-            if (dist > 0.1) 
-            {
-                vec3 direction = toSphere / dist;
-                float deflectionStrength = G * SPHERE_MASS / (dist * dist);
-                totalDeflection += direction * deflectionStrength;
+             
+            if (dist < SPHERE_RADIUS) {
+                finalColor = vec3(0.0, 0.0, 0.0);
+                hitSomething = true;
+                break;
             }
              
-            if (length(totalDeflection) > 0.0)
-            {
-                curvedRay.direction = normalize(curvedRay.direction + totalDeflection * STEP_SIZE);
-            }
-             
+            vec3 directionToSphere = toSphere / dist;
+            float deflection = (2.0 * RS_KM) / (dist * dist); 
+            
+            curvedRay.direction = normalize(curvedRay.direction + directionToSphere * deflection * STEP_SIZE);
             curvedRay.origin += curvedRay.direction * STEP_SIZE;
              
-            if (length(curvedRay.origin) > 20.0) break;
+            if (length(curvedRay.origin - cam.origin) > 1000.0) break;
         }
 
         if (!hitSomething) {

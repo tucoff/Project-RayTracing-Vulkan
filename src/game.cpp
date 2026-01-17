@@ -37,7 +37,7 @@ const uint32_t HEIGHT = 800;
 
 const int MAX_FRAMES_IN_FLIGHT = 4;
 
-const float CAMERA_SPEED = 2.5f;
+const float CAMERA_SPEED = 40;
 const float MOUSE_SENSITIVITY = 0.05f;
 
 bool relativisticViewEnabled = false;
@@ -87,6 +87,7 @@ struct CameraUBO {
     alignas(16) glm::vec3 horizontal;
     alignas(16) glm::vec3 vertical;
 	alignas(4) bool relativistic_view_enabled;
+    alignas(4) int mass;
 };
 
 #pragma endregion
@@ -1817,6 +1818,7 @@ private:
         ubo.horizontal = horizontal;
         ubo.vertical = vertical;
 		ubo.relativistic_view_enabled = relativisticViewEnabled ? 1 : 0;
+		ubo.mass = 1.0f;
          
         memcpy(cameraBuffersMapped[currentImage], &ubo, sizeof(ubo));
     }
