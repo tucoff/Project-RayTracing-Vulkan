@@ -176,17 +176,7 @@ void main()
         if (!hitSomething) {
             finalColor = get_sky_color(curvedRay.direction);
         }
-    } 
+    }
 
-    vec2 distFromCenter = vec2(pixel_coords.x - screen_size.x / 2.0, pixel_coords.y - screen_size.y / 2.0);
-
-    float vignette_radius = 10;
-
-    float maxDist = length(vec2(screen_size) / 2.0);
-    float vignette = 1.0 - (length(distFromCenter) / (maxDist * vignette_radius));
-    vignette = clamp(vignette, 0.0, 1.0);
-
-    finalColor *= vignette;
-
-    imageStore(storageImage, pixel_coords, vec4(finalColor, vignette));
+    imageStore(storageImage, pixel_coords, vec4(finalColor, 1.0));
 }
