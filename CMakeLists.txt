@@ -99,6 +99,7 @@ endfunction()
 file(GLOB SHADER_SOURCES
     "${SHADER_DIR}/*.vert"
     "${SHADER_DIR}/*.frag"
+    "${SHADER_DIR}/*.comp"
 )
 
 set(SHADER_BINARIES "")
