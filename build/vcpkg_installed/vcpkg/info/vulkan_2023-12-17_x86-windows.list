@@ -1,0 +1,10 @@
+x86-windows/
+x86-windows/share/
+x86-windows/share/vulkan/
+x86-windows/share/vulkan/copyright
+x86-windows/share/vulkan/detect-vulkan/
+x86-windows/share/vulkan/detect-vulkan/CMakeLists.txt
+x86-windows/share/vulkan/detect-vulkan/vulkan-result.cmake.in
+x86-windows/share/vulkan/usage
+x86-windows/share/vulkan/vcpkg.spdx.json
+x86-windows/share/vulkan/vcpkg_abi_info.txt

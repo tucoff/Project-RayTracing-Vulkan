@@ -9,8 +9,15 @@ layout(binding = 1) uniform CameraUBO
     vec3 lower_left_corner;
     vec3 horizontal;
     vec3 vertical;
-    bool relativistic_view_enabled; 
+    bool relativistic_view_enabled;
+    int num_bodies;
 } cam;
+
+// SSBO containing celestial bodies (xyz = position, w = mass in geometric units)
+layout(std430, binding = 2) readonly buffer BodyBuffer 
+{
+    vec4 bodies[];
+};
 
 struct Ray 
 {
@@ -24,24 +31,62 @@ struct HitResult
     float dst;
     vec3 color;
 };
- 
-const float G_REAL = 6.67430e-11;
-const float C_REAL = 299792458.0;
-const float SOLAR_MASS = 1.989e30;
-const float MASS = 10.0 * SOLAR_MASS;
- 
-const float RS_KM = (2.0 * G_REAL * MASS) / (C_REAL * C_REAL) / 1000.0; 
 
-const int MAX_STEPS = 1000;
-const float STEP_SIZE = 1.0; 
+// Constants for raymarching
+const int MAX_STEPS = 5000;
+const float STEP_SIZE = 0.5; 
+const float EPSILON = 1e-6;
 
-const vec3 SPHERE_POS = vec3(0.0, 0.0, -150.0); 
-const float SPHERE_RADIUS = RS_KM;
+// Visualization constants (kept for backwards compatibility in non-relativistic mode)
 const vec3 RING_NORMAL = normalize(vec3(0.3, 1.0, 0.3));
-const float RING_INNER = RS_KM * 2.0; 
-const float RING_OUTER = RS_KM * 5.0; 
+const float RING_INNER = 10.0; 
+const float RING_OUTER = 25.0;
 
-bool hit_sphere(vec3 center, float radius, Ray ray, out float t_hit)
+// Calcula o fator conforme (psi) e seu gradiente no ponto p
+// Usa o método Brill-Lindquist: psi = 1 + sum(M_n / (2 * d_n))
+// Em unidades geometrizadas (G = c = 1)
+void get_spacetime_curvature(vec3 p, out float psi, out vec3 grad_psi, out bool inside_horizon)
+{
+    psi = 1.0;
+    grad_psi = vec3(0.0);
+    inside_horizon = false;
+    
+    for (int i = 0; i < cam.num_bodies; i++)
+    {
+        vec3 body_pos = bodies[i].xyz;
+        float mass = bodies[i].w;
+        
+        vec3 r_vec = p - body_pos;
+        float r = length(r_vec);
+        
+        // Horizonte em coordenadas isotrópicas: r <= M/2
+        float horizon_radius = mass / 2.0;
+        
+        if (r <= horizon_radius)
+        {
+            inside_horizon = true;
+            psi = 1.0; // Indefinido no horizonte, mas evita divisão por zero
+            grad_psi = vec3(0.0);
+            return;
+        }
+        
+        // Evita divisão por zero com epsilon
+        float r_safe = max(r, EPSILON);
+        vec3 r_hat = r_vec / r_safe;
+        
+        // Contribuição para psi
+        float psi_contribution = mass / (2.0 * r_safe);
+        psi += psi_contribution;
+        
+        // Gradiente analítico de psi: d(psi)/dr = -M/(2*r^2)
+        // Gradiente vetorial: grad(psi) = (d(psi)/dr) * r_hat
+        float grad_magnitude = -mass / (2.0 * r_safe * r_safe);
+        grad_psi += grad_magnitude * r_hat;
+    }
+}
+
+// Detecta visualmente os horizontes dos buracos negros como esferas
+bool hit_horizon_sphere(vec3 center, float radius, Ray ray, out float t_hit)
 {
     vec3 oc = ray.origin - center;
     float a = dot(ray.direction, ray.direction);
@@ -81,29 +126,37 @@ bool hit_ring(vec3 center, vec3 normal, float inner_radius, float outer_radius, 
     return false;
 }
 
+// Calcula colisões com horizontes e anéis (modo não-relativístico)
 HitResult calculate_ray_collision(Ray r) 
 {
     HitResult closestHit;
     closestHit.didHit = false;
     closestHit.dst = 1e10; 
 
-    float t_sphere = 1e10;
-    float t_ring = 1e10;
-     
-    if (hit_sphere(SPHERE_POS, SPHERE_RADIUS, r, t_sphere)) {
-        if (t_sphere < closestHit.dst) {
-            closestHit.didHit = true;
-            closestHit.dst = t_sphere;
-            closestHit.color = vec3(0.0, 0.0, 0.0); 
-            if (!cam.relativistic_view_enabled) closestHit.color = vec3(0.74, 0.74, 0.74); 
+    // Itera sobre todos os corpos celestes
+    for (int i = 0; i < cam.num_bodies; i++)
+    {
+        vec3 body_pos = bodies[i].xyz;
+        float mass = bodies[i].w;
+        float horizon_radius = mass / 2.0; // Horizonte em coordenadas isotrópicas
+        
+        float t_horizon;
+        if (hit_horizon_sphere(body_pos, horizon_radius, r, t_horizon)) {
+            if (t_horizon < closestHit.dst) {
+                closestHit.didHit = true;
+                closestHit.dst = t_horizon;
+                closestHit.color = vec3(0.74, 0.74, 0.74); // Cinza para visualização
+            }
         }
-    }
-     
-    if (hit_ring(SPHERE_POS, RING_NORMAL, RING_INNER, RING_OUTER, r, t_ring)) {
-        if (t_ring < closestHit.dst) {
-            closestHit.didHit = true;
-            closestHit.dst = t_ring;
-            closestHit.color = vec3(1.0, 1.0, 1.0); 
+        
+        // Anéis ao redor de cada corpo
+        float t_ring;
+        if (hit_ring(body_pos, RING_NORMAL, RING_INNER, RING_OUTER, r, t_ring)) {
+            if (t_ring < closestHit.dst) {
+                closestHit.didHit = true;
+                closestHit.dst = t_ring;
+                closestHit.color = vec3(1.0, 1.0, 1.0); 
+            }
         }
     }
 
@@ -146,30 +199,40 @@ void main()
 
         for (int step = 0; step < MAX_STEPS; step++)
         { 
+            // Calcula a curvatura do espaço-tempo no ponto atual
+            float psi;
+            vec3 grad_psi;
+            bool inside_horizon;
+            get_spacetime_curvature(curvedRay.origin, psi, grad_psi, inside_horizon);
+            
+            // Se o raio cruzou um horizonte de eventos, retorna preto
+            if (inside_horizon) {
+                finalColor = vec3(0.0, 0.0, 0.0);
+                hitSomething = true;
+                break;
+            }
+            
+            // Verifica colisão com geometria visual (opcional para debug)
             HitResult hitInfo = calculate_ray_collision(curvedRay);
-             
             if (hitInfo.didHit && hitInfo.dst <= STEP_SIZE)
             {
                 finalColor = hitInfo.color;
                 hitSomething = true;
                 break; 
             }
-             
-            vec3 toSphere = SPHERE_POS - curvedRay.origin;
-            float dist = length(toSphere);
-             
-            if (dist < SPHERE_RADIUS) {
-                finalColor = vec3(0.0, 0.0, 0.0);
-                hitSomething = true;
-                break;
-            }
-             
-            vec3 directionToSphere = toSphere / dist;
-            float deflection = (2.0 * RS_KM) / (dist * dist); 
             
-            curvedRay.direction = normalize(curvedRay.direction + directionToSphere * deflection * STEP_SIZE);
+            // Deflexão relativística usando o gradiente do fator conforme
+            // A deflexão é proporcional a (2/psi) * grad(psi)
+            float psi_safe = max(psi, EPSILON); // Evita divisão por zero
+            vec3 deflection = (2.0 / psi_safe) * grad_psi;
+            
+            // Atualiza a direção do raio (geodésica nula no espaço curvo)
+            curvedRay.direction = normalize(curvedRay.direction + deflection * STEP_SIZE);
+            
+            // Avança o raio pelo espaço
             curvedRay.origin += curvedRay.direction * STEP_SIZE;
              
+            // Limite de distância para evitar loops infinitos
             if (length(curvedRay.origin - cam.origin) > 1000.0) break;
         }
 

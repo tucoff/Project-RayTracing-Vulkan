@@ -2,6 +2,8 @@
 
 #include "game.h"
 #include "utils.h"
+#include "scenarios.h"
+#include "animation_examples.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
@@ -42,6 +44,8 @@ const float MOUSE_SENSITIVITY = 0.05f;
 
 bool relativisticViewEnabled = false;
 bool traceMode = false;
+int currentScenario = 0;
+int currentAnimation = -1;
 
 const std::vector<const char*> validationLayers =
 {
@@ -86,8 +90,8 @@ struct CameraUBO {
     alignas(16) glm::vec3 lower_left_corner;
     alignas(16) glm::vec3 horizontal;
     alignas(16) glm::vec3 vertical;
-	alignas(4) bool relativistic_view_enabled;
-    alignas(4) int mass;
+    alignas(4) int relativistic_view_enabled;
+    alignas(4) int num_bodies;
 };
 
 #pragma endregion
@@ -146,7 +150,13 @@ private:
     uint32_t mipLevels = 1; 
     std::vector<VkBuffer> cameraUniformBuffers;
     std::vector<VkDeviceMemory> cameraUniformBuffersMemory;
-    void* cameraBuffersMapped[MAX_FRAMES_IN_FLIGHT]; 
+    void* cameraBuffersMapped[MAX_FRAMES_IN_FLIGHT];
+    
+    // Storage buffer for celestial bodies (SSBO)
+    VkBuffer bodiesStorageBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory bodiesStorageBufferMemory = VK_NULL_HANDLE;
+    std::vector<glm::vec4> celestialBodies; // xyz = position, w = mass (geometric units)
+    
     glm::vec3 cameraPos = glm::vec3(2.0f, 2.0f, 2.0f);
     glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
     glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
@@ -158,6 +168,9 @@ private:
     float hY = HEIGHT / 2.0f;
     float deltaTime = 0.0f;
     float lastFrame = 0.0f;
+    
+    int shaderMaxSteps = 5000;
+    float shaderStepSize = 0.5f;
 
 #pragma endregion
 
@@ -210,6 +223,7 @@ private:
         createImageViews();
         createCommandPool();
         createUniformBuffers();
+        createBodiesStorageBuffer();
         createTextureImage();
         createTextureImageView();
         createTextureSampler();
@@ -223,7 +237,7 @@ private:
     }
 
     #pragma region Other Helper Functions
-    QueueFamilyIndices findQueueFamilies(VkPhysicalDevice candidateDevice)
+    QueueFamilyIndices findQueueFamilies(VkPhysicalDevice candidateDevice) const
     {
         QueueFamilyIndices indices;
         uint32_t queueFamilyCount = 0;
@@ -259,7 +273,7 @@ private:
         return indices;
     }
 
-    VkFormat findDepthFormat()
+    VkFormat findDepthFormat() const
     {
         return findSupportedFormat(
             { VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT },
@@ -268,7 +282,7 @@ private:
         );
     }
 
-    VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features)
+    VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features) const
     {
         for (VkFormat format : candidates)
         {
@@ -353,7 +367,7 @@ private:
         return imageView;
     }
 
-    uint32_t findMemoryTypeIndex(uint32_t typeFilter, VkMemoryPropertyFlags properties)
+    uint32_t findMemoryTypeIndex(uint32_t typeFilter, VkMemoryPropertyFlags properties) const
     {
         VkPhysicalDeviceMemoryProperties memProperties;
         vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
@@ -543,13 +557,13 @@ private:
         std::vector<VkPhysicalDevice> devices(deviceCount);
         vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
 
-        for (const auto &device : devices) {
-            VkPhysicalDeviceFeatures currentDeviceFeatures;
-            vkGetPhysicalDeviceFeatures(device, &currentDeviceFeatures);
+        for (const auto &candidateDevice : devices) {
+            VkPhysicalDeviceFeatures currentDeviceFeatures = {};
+            vkGetPhysicalDeviceFeatures(candidateDevice, &currentDeviceFeatures);
 
-            if (isDeviceSuitable(device)) {
-                physicalDevice = device;
-                vkGetPhysicalDeviceFeatures(device, &supportedPhysicalDeviceFeatures);
+            if (isDeviceSuitable(candidateDevice)) {
+                physicalDevice = candidateDevice;
+                vkGetPhysicalDeviceFeatures(candidateDevice, &supportedPhysicalDeviceFeatures);
                 break;
             }
         }
@@ -560,31 +574,31 @@ private:
         }
     }
 
-    bool isDeviceSuitable(VkPhysicalDevice device)
+    bool isDeviceSuitable(VkPhysicalDevice candidateDevice) const
     {
-        QueueFamilyIndices indices = findQueueFamilies(device);
-        bool extensionsSupported = checkDeviceExtensionSupport(device);
+        QueueFamilyIndices indices = findQueueFamilies(candidateDevice);
+        bool extensionsSupported = checkDeviceExtensionSupport(candidateDevice);
 
         bool swapChainAdequate = false;
         if (extensionsSupported)
         {
-            SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
+            SwapChainSupportDetails swapChainSupport = querySwapChainSupport(candidateDevice);
             swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
         }
 
         VkPhysicalDeviceFeatures deviceFeatures;
-        vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
+        vkGetPhysicalDeviceFeatures(candidateDevice, &deviceFeatures);
 
         return indices.isComplete() && extensionsSupported && swapChainAdequate && deviceFeatures.samplerAnisotropy;
     }
 
-    bool checkDeviceExtensionSupport(VkPhysicalDevice device)
+    bool checkDeviceExtensionSupport(VkPhysicalDevice candidateDevice) const
     {
         uint32_t extensionCount;
-        vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
+        vkEnumerateDeviceExtensionProperties(candidateDevice, nullptr, &extensionCount, nullptr);
         if (extensionCount == 0) return false;
         std::vector<VkExtensionProperties> availableExtensions(extensionCount);
-        vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
+        vkEnumerateDeviceExtensionProperties(candidateDevice, nullptr, &extensionCount, availableExtensions.data());
         std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
         for (const auto& extension : availableExtensions)
         {
@@ -713,7 +727,7 @@ private:
         imagesInFlight.resize(swapChainImages.size(), VK_NULL_HANDLE);
     }
 
-    VkCompositeAlphaFlagBitsKHR chooseSwapCompositeAlpha(const VkSurfaceCapabilitiesKHR& capabilities) 
+    VkCompositeAlphaFlagBitsKHR chooseSwapCompositeAlpha(const VkSurfaceCapabilitiesKHR& capabilities) const
     {
         if (capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR) 
         {
@@ -733,37 +747,37 @@ private:
         throw std::runtime_error("failed to find a supported composite alpha!");
     }
 
-    SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device)
+    SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice candidateDevice) const
     {
         SwapChainSupportDetails details;
 
-        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
+        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(candidateDevice, surface, &details.capabilities);
 
-        uint32_t formatCount;
-        vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, nullptr);
+        uint32_t formatCount = 0;
+        vkGetPhysicalDeviceSurfaceFormatsKHR(candidateDevice, surface, &formatCount, nullptr);
 
         if (formatCount != 0)
         {
             details.formats.resize(formatCount);
 
-            vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, details.formats.data());
+            vkGetPhysicalDeviceSurfaceFormatsKHR(candidateDevice, surface, &formatCount, details.formats.data());
         }
 
-        uint32_t presentModeCount;
+        uint32_t presentModeCount = 0;
 
-        vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, nullptr);
+        vkGetPhysicalDeviceSurfacePresentModesKHR(candidateDevice, surface, &presentModeCount, nullptr);
 
         if (presentModeCount != 0)
         {
             details.presentModes.resize(presentModeCount);
 
-            vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, details.presentModes.data());
+            vkGetPhysicalDeviceSurfacePresentModesKHR(candidateDevice, surface, &presentModeCount, details.presentModes.data());
         }
 
         return details;
     }
 
-    VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats)
+    VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) const
     {
         for (const auto& availableFormat : availableFormats)
         {
@@ -776,7 +790,7 @@ private:
         return availableFormats[0];
     }
 
-    VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes)
+    VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) const
     {
         for (const auto& availablePresentMode : availablePresentModes)
         {
@@ -789,7 +803,7 @@ private:
         return VK_PRESENT_MODE_FIFO_KHR;
     }
 
-    VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities)
+    VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) const
     {
         if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
         {
@@ -853,7 +867,7 @@ private:
         
         int texWidth, texHeight, texChannels;
         stbi_uc* pixels = stbi_load(TEXTURE_PATH.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
-        VkDeviceSize imageSize = texWidth * texHeight * 4;
+        VkDeviceSize imageSize = static_cast<VkDeviceSize>(texWidth) * static_cast<VkDeviceSize>(texHeight) * 4;
 
         mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(texWidth, texHeight)))) + 1;
 
@@ -862,11 +876,11 @@ private:
             throw std::runtime_error("failed to load texture image!");
         }
 
-        VkBuffer stagingBuffer;
-        VkDeviceMemory stagingBufferMemory;
+        VkBuffer stagingBuffer = VK_NULL_HANDLE;
+        VkDeviceMemory stagingBufferMemory = VK_NULL_HANDLE;
         createBuffer(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
 
-        void* data;
+        void* data = nullptr;
         vkMapMemory(device, stagingBufferMemory, 0, imageSize, 0, &data);
         memcpy(data, pixels, static_cast<size_t>(imageSize));
         vkUnmapMemory(device, stagingBufferMemory);
@@ -914,7 +928,7 @@ private:
         vkBindBufferMemory(device, vertexBuffer, vertexBufferMemory, 0);
     }
 
-    void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t mipLevels)
+    void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t numMipLevels)
     {
         (void)format;  
         VkCommandBuffer commandBuffer = beginSingleTimeCommand();
@@ -926,7 +940,7 @@ private:
         barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier.image = image;
-        barrier.subresourceRange.levelCount = mipLevels;
+        barrier.subresourceRange.levelCount = numMipLevels;
 
         if (newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
         {
@@ -943,7 +957,7 @@ private:
         }
 
         barrier.subresourceRange.baseMipLevel = 0;
-        barrier.subresourceRange.levelCount = mipLevels;
+        barrier.subresourceRange.levelCount = numMipLevels;
         barrier.subresourceRange.baseArrayLayer = 0;
         barrier.subresourceRange.layerCount = 1;
 
@@ -991,7 +1005,7 @@ private:
         endSingleTimeCommand(commandBuffer);
     }
 
-    bool hasStencilComponent(VkFormat format)
+    bool hasStencilComponent(VkFormat format) const
     {
         return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT;
     }
@@ -1000,7 +1014,7 @@ private:
     {
         VkCommandBuffer commandBuffer = beginSingleTimeCommand();
 
-        VkBufferImageCopy region{};
+        VkBufferImageCopy region = {};
         region.bufferOffset = 0;
         region.bufferRowLength = 0;
         region.bufferImageHeight = 0;
@@ -1025,7 +1039,7 @@ private:
 
     void generateMipmaps(VkImage image, VkFormat imageFormat, int32_t texWidth, int32_t texHeight, uint32_t numMipLevels)
     {
-        VkFormatProperties formatProperties;
+        VkFormatProperties formatProperties = {};
         vkGetPhysicalDeviceFormatProperties(physicalDevice, imageFormat, &formatProperties);
 
         if (!(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
@@ -1157,6 +1171,8 @@ private:
         }
 
         vkQueueWaitIdle(graphicsQueue);
+
+        vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
     }
 
     #pragma endregion
@@ -1224,14 +1240,21 @@ private:
         storageImageLayoutBinding.pImmutableSamplers = nullptr;
         storageImageLayoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
-		VkDescriptorSetLayoutBinding uniformBufferLayoutBinding{};
-		uniformBufferLayoutBinding.binding = 1;
-		uniformBufferLayoutBinding.descriptorCount = 1;
-		uniformBufferLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		uniformBufferLayoutBinding.pImmutableSamplers = nullptr;
-		uniformBufferLayoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+	VkDescriptorSetLayoutBinding uniformBufferLayoutBinding{};
+	uniformBufferLayoutBinding.binding = 1;
+	uniformBufferLayoutBinding.descriptorCount = 1;
+	uniformBufferLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	uniformBufferLayoutBinding.pImmutableSamplers = nullptr;
+	uniformBufferLayoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
-        std::array<VkDescriptorSetLayoutBinding, 2> bindings = {storageImageLayoutBinding, uniformBufferLayoutBinding};
+        VkDescriptorSetLayoutBinding storageBufferLayoutBinding{};
+        storageBufferLayoutBinding.binding = 2;
+        storageBufferLayoutBinding.descriptorCount = 1;
+        storageBufferLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        storageBufferLayoutBinding.pImmutableSamplers = nullptr;
+        storageBufferLayoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+        std::array<VkDescriptorSetLayoutBinding, 3> bindings = {storageImageLayoutBinding, uniformBufferLayoutBinding, storageBufferLayoutBinding};
         VkDescriptorSetLayoutCreateInfo layoutInfo{};
         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
@@ -1245,13 +1268,16 @@ private:
 
     void createDescriptorPool()
     { 
-        std::array<VkDescriptorPoolSize, 2> poolSizes{};
+        std::array<VkDescriptorPoolSize, 3> poolSizes{};
          
         poolSizes[0].type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
          
         poolSizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         poolSizes[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+        
+        poolSizes[2].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        poolSizes[2].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
 
         VkDescriptorPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -1293,8 +1319,13 @@ private:
             bufferInfo.buffer = cameraUniformBuffers[i];  
             bufferInfo.offset = 0;
             bufferInfo.range = sizeof(CameraUBO);
+            
+            VkDescriptorBufferInfo storageBufferInfo{};
+            storageBufferInfo.buffer = bodiesStorageBuffer;
+            storageBufferInfo.offset = 0;
+            storageBufferInfo.range = VK_WHOLE_SIZE;
 
-            std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
+            std::array<VkWriteDescriptorSet, 3> descriptorWrites{};
              
             descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             descriptorWrites[0].dstSet = descriptorSets[i]; 
@@ -1309,6 +1340,13 @@ private:
             descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
             descriptorWrites[1].descriptorCount = 1;
             descriptorWrites[1].pBufferInfo = &bufferInfo;
+            
+            descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWrites[2].dstSet = descriptorSets[i];
+            descriptorWrites[2].dstBinding = 2;
+            descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            descriptorWrites[2].descriptorCount = 1;
+            descriptorWrites[2].pBufferInfo = &storageBufferInfo;
 
             vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
         }
@@ -1370,7 +1408,7 @@ private:
         return buffer;
     }
 
-    VkShaderModule createShaderModule(const std::vector<char>& code)
+    VkShaderModule createShaderModule(const std::vector<char>& code) const
     {
         VkShaderModuleCreateInfo createInfo{};
         createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -1426,6 +1464,60 @@ private:
 
 	#pragma endregion
 
+    #pragma region CreateBodiesStorageBuffer()
+    
+    void createBodiesStorageBuffer()
+    {
+        loadScenario(currentScenario);
+        
+        // Calcula o tamanho do buffer (máximo de 20 corpos para alocar buffer fixo)
+        VkDeviceSize bufferSize = static_cast<VkDeviceSize>(sizeof(glm::vec4)) * 20;
+        
+        // Cria o buffer de armazenamento (SSBO)
+        createBuffer(bufferSize,
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            bodiesStorageBuffer,
+            bodiesStorageBufferMemory);
+        
+        // Mapeia e copia os dados iniciais
+        void* data = nullptr;
+        vkMapMemory(device, bodiesStorageBufferMemory, 0, static_cast<VkDeviceSize>(sizeof(glm::vec4) * celestialBodies.size()), 0, &data);
+        memcpy(data, celestialBodies.data(), sizeof(glm::vec4) * celestialBodies.size());
+        vkUnmapMemory(device, bodiesStorageBufferMemory);
+    }
+    
+    void updateBodiesStorageBuffer()
+    {
+        if (celestialBodies.empty()) return;
+        
+        // Aplica animação se habilitada
+        if (currentAnimation >= 0)
+        {
+            float time = static_cast<float>(glfwGetTime());
+            
+            switch(currentAnimation)
+            {
+                case 0: Animations::BinaryCircularOrbit(celestialBodies, time); break;
+                case 1: Animations::KeplerianOrbit(celestialBodies, time); break;
+                case 2: Animations::InspiralMerger(celestialBodies, time); break;
+                case 3: Animations::TripleHierarchical(celestialBodies, time); break;
+                case 4: Animations::VerticalOscillation(celestialBodies, time); break;
+                case 5: Animations::RotatingRing(celestialBodies, time); break;
+                default: break;
+            }
+        }
+        
+        VkDeviceSize bufferSize = static_cast<VkDeviceSize>(sizeof(glm::vec4) * celestialBodies.size());
+        
+        void* data = nullptr;
+        vkMapMemory(device, bodiesStorageBufferMemory, 0, bufferSize, 0, &data);
+        memcpy(data, celestialBodies.data(), static_cast<size_t>(bufferSize));
+        vkUnmapMemory(device, bodiesStorageBufferMemory);
+    }
+
+    #pragma endregion
+
     #pragma region CreateSyncObjects()
     void createSyncObjects()
     {
@@ -1451,10 +1543,28 @@ private:
     }
 
     #pragma endregion
-
-#pragma endregion
-
-#pragma region Camera Functions
+    
+    #pragma region LoadScenario()
+    void loadScenario(int scenarioIndex)
+    {
+        switch(scenarioIndex)
+        {
+            case 0: celestialBodies = Scenarios::SingleBlackHole(); break;
+            case 1: celestialBodies = Scenarios::BinarySymmetric(); break;
+            case 2: celestialBodies = Scenarios::BinaryMerger(); break;
+            case 3: celestialBodies = Scenarios::TripleSystem(); break;
+            case 4: celestialBodies = Scenarios::Cluster5(); break;
+            case 5: celestialBodies = Scenarios::Ring8(); break;
+            case 6: celestialBodies = Scenarios::GalacticPlane(); break;
+            case 7: celestialBodies = Scenarios::GravitationalLens(); break;
+            default: celestialBodies = Scenarios::SingleBlackHole(); break;
+        }
+        
+        std::cout << "Scenario " << (scenarioIndex + 1) << " loaded with " << celestialBodies.size() << " bodies." << std::endl;
+    }
+    #pragma endregion
+    
+    #pragma region Camera Functions
 
     void processMouseMovement(float xpos, float ypos) 
     {
@@ -1512,18 +1622,83 @@ private:
         if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
             glfwSetWindowShouldClose(window, true);
 
-        if (glfwGetKey(window, GLFW_KEY_T) == GLFW_PRESS)
+        static bool tKeyPressed = false;
+        if (glfwGetKey(window, GLFW_KEY_T) == GLFW_PRESS && !tKeyPressed)
         {
+            tKeyPressed = true;
             traceMode = !traceMode;
             if (!traceMode) glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-			else glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            else glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+            std::cout << "Trace Mode: " << (traceMode ? "ON" : "OFF") << std::endl;
         }
+        if (glfwGetKey(window, GLFW_KEY_T) == GLFW_RELEASE) tKeyPressed = false;
 
-        if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS)
+        static bool rKeyPressed = false;
+        if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS && !rKeyPressed)
         {
+            rKeyPressed = true;
             relativisticViewEnabled = !relativisticViewEnabled;
-			std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            std::cout << "Relativistic View: " << (relativisticViewEnabled ? "ON" : "OFF") << std::endl;
+        }
+        if (glfwGetKey(window, GLFW_KEY_R) == GLFW_RELEASE) rKeyPressed = false;
+        
+        static bool upPressed = false;
+        if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS && !upPressed)
+        {
+            upPressed = true;
+            shaderMaxSteps += 100;
+            if (shaderMaxSteps > 10000) shaderMaxSteps = 10000;
+            std::cout << "Max Steps: " << shaderMaxSteps << std::endl;
+        }
+        if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_RELEASE) upPressed = false;
+        
+        static bool downPressed = false;
+        if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS && !downPressed)
+        {
+            downPressed = true;
+            shaderMaxSteps -= 100;
+            if (shaderMaxSteps < 100) shaderMaxSteps = 100;
+            std::cout << "Max Steps: " << shaderMaxSteps << std::endl;
+        }
+        if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_RELEASE) downPressed = false;
+        
+        static bool leftPressed = false;
+        if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS && !leftPressed)
+        {
+            leftPressed = true;
+            shaderStepSize -= 0.05f;
+            if (shaderStepSize < 0.1f) shaderStepSize = 0.1f;
+            std::cout << "Step Size: " << shaderStepSize << std::endl;
+        }
+        if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_RELEASE) leftPressed = false;
+        
+        static bool rightPressed = false;
+        if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS && !rightPressed)
+        {
+            rightPressed = true;
+            shaderStepSize += 0.05f;
+            if (shaderStepSize > 2.0f) shaderStepSize = 2.0f;
+            std::cout << "Step Size: " << shaderStepSize << std::endl;
+        }
+        if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_RELEASE) rightPressed = false;
+        
+        for (int key = GLFW_KEY_1; key <= GLFW_KEY_8; key++)
+        {
+            static bool numKeyPressed[8] = {false};
+            int keyIndex = key - GLFW_KEY_1;
+            
+            if (glfwGetKey(window, key) == GLFW_PRESS && !numKeyPressed[keyIndex])
+            {
+                numKeyPressed[keyIndex] = true;
+                int newScenario = keyIndex;
+                if (newScenario != currentScenario)
+                {
+                    currentScenario = newScenario;
+                    currentAnimation = -1;
+                    loadScenario(currentScenario);
+                }
+            }
+            if (glfwGetKey(window, key) == GLFW_RELEASE) numKeyPressed[keyIndex] = false;
         }
     }
 
@@ -1539,7 +1714,6 @@ private:
             lastFrame = currentTime;
 
             glfwPollEvents();
-
             processInput();
 
             glfwSetWindowPos(window, (1920/2)-WIDTH/2, (1080/2)-HEIGHT/2);
@@ -1791,7 +1965,7 @@ private:
         createSwapChain();
         createImageViews();
         createStorageImage();
-        createDescriptorSets();  
+        createDescriptorSets();
     
         imagesInFlight.resize(swapChainImages.size(), VK_NULL_HANDLE);
     }
@@ -1817,10 +1991,13 @@ private:
         ubo.lower_left_corner = lower_left_corner;
         ubo.horizontal = horizontal;
         ubo.vertical = vertical;
-		ubo.relativistic_view_enabled = relativisticViewEnabled ? 1 : 0;
-		ubo.mass = 1.0f;
+        ubo.relativistic_view_enabled = relativisticViewEnabled ? 1 : 0;
+        ubo.num_bodies = static_cast<int>(celestialBodies.size());
          
         memcpy(cameraBuffersMapped[currentImage], &ubo, sizeof(ubo));
+        
+        // Atualiza o SSBO de corpos celestes a cada frame
+        updateBodiesStorageBuffer();
     }
 #pragma endregion
 
@@ -1917,6 +2094,15 @@ private:
             vkDestroyBuffer(device, cameraUniformBuffers[i], nullptr);
             vkFreeMemory(device, cameraUniformBuffersMemory[i], nullptr);
         }
+        
+        if (bodiesStorageBuffer != VK_NULL_HANDLE)
+        {
+            vkDestroyBuffer(device, bodiesStorageBuffer, nullptr);
+        }
+        if (bodiesStorageBufferMemory != VK_NULL_HANDLE)
+        {
+            vkFreeMemory(device, bodiesStorageBufferMemory, nullptr);
+        }
 
         vkDestroyDevice(device, nullptr);
 
@@ -1939,6 +2125,20 @@ private:
 int play()
 {
     Game game;
+
+    std::cout << "========================================" << std::endl;
+    std::cout << "  RayTracing Vulkan - Black Hole Sim" << std::endl;
+    std::cout << "========================================" << std::endl;
+    std::cout << "\nControls:" << std::endl;
+    std::cout << "  WASD + Space/Shift - Move camera" << std::endl;
+    std::cout << "  Mouse - Look around" << std::endl;
+    std::cout << "  T - Toggle trace mode (cursor)" << std::endl;
+    std::cout << "  R - Toggle relativistic view" << std::endl;
+    std::cout << "  1-8 - Switch scenarios" << std::endl;
+    std::cout << "  UP/DOWN - Adjust max steps" << std::endl;
+    std::cout << "  LEFT/RIGHT - Adjust step size" << std::endl;
+    std::cout << "  ESC - Exit" << std::endl;
+    std::cout << "========================================\n" << std::endl;
 
     try
     {

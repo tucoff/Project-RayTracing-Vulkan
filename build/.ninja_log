@@ -1,0 +1,7 @@
+# ninja log v6
+11	180	7947078886393328	bin/shaders/comp.spv	f9342792c5c8453d
+11	180	7947078886393328	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/build/bin/shaders/comp.spv	f9342792c5c8453d
+20	210	7947078884897418	CMakeFiles/sync_assets	436b3f02fd55a866
+20	210	7947078884897418	C:/All Projects/Pessoal/Project-RayTracing-Vulkan/build/CMakeFiles/sync_assets	436b3f02fd55a866
+218	747	7947078886878863	CMakeFiles/VulkanGame.dir/src/main.cpp.obj	1467278cb57c5da9
+225	1002	7947078886953957	CMakeFiles/VulkanGame.dir/src/utils.cpp.obj	2e1c5c1c66dfba57

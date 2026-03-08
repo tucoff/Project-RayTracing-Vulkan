@@ -40,3 +40,57 @@ Abi: 195a6af5ad805c6366ae79a2dee91352153d26b030542d8fe57a90bb34b9384b
 Description: public domain header-only libraries
 Status: install ok installed
 
+Package: vulkan-headers
+Version: 1.4.309.0
+Depends: vcpkg-cmake, vcpkg-cmake-config
+Architecture: x64-windows
+Multi-Arch: same
+Abi: fbfbb38f37475e4f61a95064981378ef4cddf1fc090ab91eb6a5740f325f5e70
+Description: Vulkan header files and API registry
+Status: install ok installed
+
+Package: vulkan-loader
+Version: 1.4.309.0
+Port-Version: 2
+Depends: vcpkg-cmake, vcpkg-cmake-config, vulkan-headers
+Architecture: x64-windows
+Multi-Arch: same
+Abi: 9b7d9f257048748d3208cc6d40675977eccf9e455a06398015195d4969a21c2e
+Description: Vulkan Development Tools
+Status: install ok installed
+
+Package: vulkan
+Version: 2023-12-17
+Depends: vcpkg-cmake, vulkan-headers, vulkan-loader
+Architecture: x64-windows
+Multi-Arch: same
+Abi: 056c86505ddfc2b0c74c8043f8d6088830bdab3bca43372c6ae4ce857eafe7ab
+Description: A stub package that ensures that Vulkan headers and a loader are available.
+    On Android, the NDK provides a loader at API level 24 or higher.
+Status: install ok installed
+
+Package: imgui
+Version: 1.91.9
+Depends: vcpkg-cmake, vcpkg-cmake-config
+Architecture: x64-windows
+Multi-Arch: same
+Abi: c35970625b8a509ba1632fdac58532dc3295f215af721da1b00e6bfff8882a4e
+Description: Bloat-free Immediate Mode Graphical User interface for C++ with minimal dependencies.
+Status: install ok installed
+
+Package: imgui
+Feature: glfw-binding
+Depends: glfw3
+Architecture: x64-windows
+Multi-Arch: same
+Description: Make available GLFW binding
+Status: install ok installed
+
+Package: imgui
+Feature: vulkan-binding
+Depends: vulkan
+Architecture: x64-windows
+Multi-Arch: same
+Description: Make available Vulkan binding
+Status: install ok installed
+

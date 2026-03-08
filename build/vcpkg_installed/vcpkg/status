@@ -1,0 +1,96 @@
+Package: vcpkg-cmake-config
+Version: 2024-05-23
+Architecture: x64-windows
+Multi-Arch: same
+Abi: 80b139a16db9586821822493e1e2c117ce59f6a4def1a9780e1db8b1651a6af3
+Status: install ok installed
+
+Package: vcpkg-cmake
+Version: 2024-04-23
+Architecture: x64-windows
+Multi-Arch: same
+Abi: 0987362eba72489a2b0bc74848da14f1cb9088b3dfe978aacc7069ab267e96a6
+Status: install ok installed
+
+Package: glfw3
+Version: 3.4
+Port-Version: 1
+Depends: vcpkg-cmake:x64-windows, vcpkg-cmake-config:x64-windows
+Architecture: x86-windows
+Multi-Arch: same
+Abi: a48be657cc18ff31152d8dcc85535d861140c3bde56f538bf20d3ebffb712f17
+Description: GLFW is a free, Open Source, multi-platform library for OpenGL, OpenGL ES and Vulkan application development. It provides a simple, platform-independent API for creating windows, contexts and surfaces, reading input, handling events, etc.
+Status: install ok installed
+
+Package: glm
+Version: 1.0.2
+Depends: vcpkg-cmake:x64-windows, vcpkg-cmake-config:x64-windows
+Architecture: x86-windows
+Multi-Arch: same
+Abi: 8ea398c00dd20dfa3e889254fc837154db480f48529c6496e5428662cbdd1044
+Description: OpenGL Mathematics (GLM)
+Status: install ok installed
+
+Package: vulkan-headers
+Version: 1.4.309.0
+Depends: vcpkg-cmake:x64-windows, vcpkg-cmake-config:x64-windows
+Architecture: x86-windows
+Multi-Arch: same
+Abi: 253a37bb23bc9ab16720a4bc74bad2c76de2ac163844f0923aa47e31b92ac0db
+Description: Vulkan header files and API registry
+Status: install ok installed
+
+Package: vulkan-loader
+Version: 1.4.309.0
+Port-Version: 2
+Depends: vcpkg-cmake:x64-windows, vcpkg-cmake-config:x64-windows, vulkan-headers
+Architecture: x86-windows
+Multi-Arch: same
+Abi: 6c6246e302ee8e0deeff225f4032ff2254162a768907234e3bb503437a2babfb
+Description: Vulkan Development Tools
+Status: install ok installed
+
+Package: vulkan
+Version: 2023-12-17
+Depends: vcpkg-cmake:x64-windows, vulkan-headers, vulkan-loader
+Architecture: x86-windows
+Multi-Arch: same
+Abi: 05dc1ef7e884e837a2cfcaf2842be7d0974d60e396ad381b519b0d5d4c0fe92c
+Description: A stub package that ensures that Vulkan headers and a loader are available.
+    On Android, the NDK provides a loader at API level 24 or higher.
+Status: install ok installed
+
+Package: imgui
+Version: 1.91.9
+Depends: vcpkg-cmake:x64-windows, vcpkg-cmake-config:x64-windows
+Architecture: x86-windows
+Multi-Arch: same
+Abi: 436c787b9664c1371e58484c4f7f6677d7136b0b3f2f82d5717b494d0d8859aa
+Description: Bloat-free Immediate Mode Graphical User interface for C++ with minimal dependencies.
+Status: install ok installed
+
+Package: imgui
+Feature: glfw-binding
+Depends: glfw3
+Architecture: x86-windows
+Multi-Arch: same
+Description: Make available GLFW binding
+Status: install ok installed
+
+Package: imgui
+Feature: vulkan-binding
+Depends: vulkan
+Architecture: x86-windows
+Multi-Arch: same
+Description: Make available Vulkan binding
+Status: install ok installed
+
+Package: stb
+Version: 2024-07-29
+Port-Version: 1
+Architecture: x86-windows
+Multi-Arch: same
+Abi: 6c970b42ea5ae8fb7f8bd05e33a5d0ef0666519cac216434e6bb813766d3c632
+Description: public domain header-only libraries
+Status: install ok installed
+
