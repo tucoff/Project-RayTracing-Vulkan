@@ -38,8 +38,8 @@ const float STEP_SIZE = 1.0;
 const vec3 SPHERE_POS = vec3(0.0, 0.0, -150.0); 
 const float SPHERE_RADIUS = RS_KM;
 const vec3 RING_NORMAL = normalize(vec3(0.3, 1.0, 0.3));
-const float RING_INNER = RS_KM * 2.0; 
-const float RING_OUTER = RS_KM * 5.0; 
+const float RING_INNER = RS_KM * 4.0; 
+const float RING_OUTER = RS_KM * 7.0; 
 
 bool hit_sphere(vec3 center, float radius, Ray ray, out float t_hit)
 {
