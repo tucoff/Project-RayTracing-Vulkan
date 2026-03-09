@@ -114,32 +114,26 @@ namespace Scenarios
 #endif // SCENARIOS_H
 
 /* 
- * EXEMPLO DE USO em game.cpp:
- * 
- * #include "scenarios.h"
- * 
- * void createBodiesStorageBuffer()
- * {
- *     // Escolha um cenário
- *     celestialBodies = Scenarios::BinaryMerger();
- *     
- *     // Ou crie manualmente
- *     // celestialBodies.clear();
- *     // celestialBodies.push_back(glm::vec4(x, y, z, mass));
- *     
- *     VkDeviceSize bufferSize = sizeof(glm::vec4) * celestialBodies.size();
- *     createBuffer(...);
- *     // ... resto do código
- * }
- * 
- * DICAS DE MASSAS (unidades geométricas):
- * - Massa 1-5:   Buracos negros estelares pequenos
- * - Massa 5-20:  Buracos negros estelares típicos
- * - Massa 20-50: Buracos negros estelares massivos
- * - Massa 50+:   Buracos negros intermediários/supermassivos
- * 
- * DICAS DE DISTÂNCIAS:
- * - Para visualizar lensing claro, mantenha separação > 2 × (M1 + M2)
- * - Horizontes não devem se sobrepor: dist > (M1 + M2) / 2
- * - Para cenários estáveis, use distâncias > 5 × max(M_i)
- */
+* CENÁRIOS DE ESPAÇO-TEMPO ESTACIONÁRIO
+* 
+* Estes cenários representam configurações estáticas de buracos negros
+* para resolução das equações de Einstein no formalismo BSSN.
+* 
+* NOTA: Os corpos NÃO se movem. O espaço-tempo é calculado como solução
+* estacionária das equações de campo de Einstein.
+* 
+* UNIDADES GEOMÉTRICAS (G = c = 1):
+* - Massa: M (define o raio de Schwarzschild r_s = 2M)
+* - Distância: Unidades de comprimento arbitrárias
+* 
+* MASSAS TÍPICAS:
+* - Massa 1-5:   Buracos negros estelares pequenos (r_s = 2-10)
+* - Massa 5-20:  Buracos negros estelares médios (r_s = 10-40)
+* - Massa 20-50: Buracos negros estelares massivos (r_s = 40-100)
+* - Massa 50+:   Buracos negros supermassivos (r_s > 100)
+* 
+* SEPARAÇÕES RECOMENDADAS:
+* - Para lensing gravitacional visível: separação > 3 × (M1 + M2)
+* - Para evitar horizontes comuns: separação > (r_s1 + r_s2)
+* - Para sistema estável: separação > 5 × max(M_i)
+*/

@@ -3,7 +3,7 @@
 #include "game.h"
 #include "utils.h"
 #include "scenarios.h"
-#include "animation_examples.h"
+#include "einstein_solver.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
@@ -45,7 +45,6 @@ const float MOUSE_SENSITIVITY = 0.05f;
 bool relativisticViewEnabled = false;
 bool traceMode = false;
 int currentScenario = 0;
-int currentAnimation = -1;
 
 const std::vector<const char*> validationLayers =
 {
@@ -156,6 +155,9 @@ private:
     VkBuffer bodiesStorageBuffer = VK_NULL_HANDLE;
     VkDeviceMemory bodiesStorageBufferMemory = VK_NULL_HANDLE;
     std::vector<glm::vec4> celestialBodies; // xyz = position, w = mass (geometric units)
+     
+    Einstein::SpacetimeGrid* spacetimeGrid = nullptr;
+    bool spacetimeInitialized = false;
     
     glm::vec3 cameraPos = glm::vec3(2.0f, 2.0f, 2.0f);
     glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
@@ -1469,51 +1471,54 @@ private:
     void createBodiesStorageBuffer()
     {
         loadScenario(currentScenario);
-        
-        // Calcula o tamanho do buffer (máximo de 20 corpos para alocar buffer fixo)
+         
         VkDeviceSize bufferSize = static_cast<VkDeviceSize>(sizeof(glm::vec4)) * 20;
-        
-        // Cria o buffer de armazenamento (SSBO)
+         
         createBuffer(bufferSize,
             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
             bodiesStorageBuffer,
             bodiesStorageBufferMemory);
-        
-        // Mapeia e copia os dados iniciais
+         
         void* data = nullptr;
         vkMapMemory(device, bodiesStorageBufferMemory, 0, static_cast<VkDeviceSize>(sizeof(glm::vec4) * celestialBodies.size()), 0, &data);
         memcpy(data, celestialBodies.data(), sizeof(glm::vec4) * celestialBodies.size());
         vkUnmapMemory(device, bodiesStorageBufferMemory);
+         
+        initializeSpacetime();
     }
     
-    void updateBodiesStorageBuffer()
+    void initializeSpacetime()
     {
-        if (celestialBodies.empty()) return;
+        std::cout << "\n========================================" << std::endl;
+        std::cout << "  Einstein Spacetime Initialization" << std::endl;
+        std::cout << "========================================" << std::endl;
+         
+        glm::vec3 min_corner(-200.0f, -200.0f, -300.0f);
+        glm::vec3 max_corner(200.0f, 200.0f, 0.0f);
+         
+        int grid_resolution = 64;
         
-        // Aplica animação se habilitada
-        if (currentAnimation >= 0)
+        if(spacetimeGrid != nullptr)
         {
-            float time = static_cast<float>(glfwGetTime());
-            
-            switch(currentAnimation)
-            {
-                case 0: Animations::BinaryCircularOrbit(celestialBodies, time); break;
-                case 1: Animations::KeplerianOrbit(celestialBodies, time); break;
-                case 2: Animations::InspiralMerger(celestialBodies, time); break;
-                case 3: Animations::TripleHierarchical(celestialBodies, time); break;
-                case 4: Animations::VerticalOscillation(celestialBodies, time); break;
-                case 5: Animations::RotatingRing(celestialBodies, time); break;
-                default: break;
-            }
+            delete spacetimeGrid;
         }
         
-        VkDeviceSize bufferSize = static_cast<VkDeviceSize>(sizeof(glm::vec4) * celestialBodies.size());
+        spacetimeGrid = new Einstein::SpacetimeGrid(
+            grid_resolution, grid_resolution, grid_resolution,
+            min_corner, max_corner
+        );
+         
+        Einstein::InitializeSpacetime(*spacetimeGrid, celestialBodies);
         
-        void* data = nullptr;
-        vkMapMemory(device, bodiesStorageBufferMemory, 0, bufferSize, 0, &data);
-        memcpy(data, celestialBodies.data(), static_cast<size_t>(bufferSize));
-        vkUnmapMemory(device, bodiesStorageBufferMemory);
+        spacetimeInitialized = true;
+        
+        std::cout << "\n[Einstein] Space-time Ready!" << std::endl;
+        std::cout << "[Einstein] Grid: " << grid_resolution << "^3 points" << std::endl;
+        std::cout << "[Einstein] Volume: (" << (max_corner.x - min_corner.x) << " x "
+                  << (max_corner.y - min_corner.y) << " x "
+                  << (max_corner.z - min_corner.z) << ")" << std::endl;
+        std::cout << "========================================\n" << std::endl;
     }
 
     #pragma endregion
@@ -1694,8 +1699,14 @@ private:
                 if (newScenario != currentScenario)
                 {
                     currentScenario = newScenario;
-                    currentAnimation = -1;
                     loadScenario(currentScenario);
+                     
+                    void* data = nullptr;
+                    vkMapMemory(device, bodiesStorageBufferMemory, 0, static_cast<VkDeviceSize>(sizeof(glm::vec4) * celestialBodies.size()), 0, &data);
+                    memcpy(data, celestialBodies.data(), sizeof(glm::vec4) * celestialBodies.size());
+                    vkUnmapMemory(device, bodiesStorageBufferMemory);
+                     
+                    initializeSpacetime();
                 }
             }
             if (glfwGetKey(window, key) == GLFW_RELEASE) numKeyPressed[keyIndex] = false;
@@ -1995,9 +2006,6 @@ private:
         ubo.num_bodies = static_cast<int>(celestialBodies.size());
          
         memcpy(cameraBuffersMapped[currentImage], &ubo, sizeof(ubo));
-        
-        // Atualiza o SSBO de corpos celestes a cada frame
-        updateBodiesStorageBuffer();
     }
 #pragma endregion
 
@@ -2102,6 +2110,13 @@ private:
         if (bodiesStorageBufferMemory != VK_NULL_HANDLE)
         {
             vkFreeMemory(device, bodiesStorageBufferMemory, nullptr);
+        }
+        
+        // Cleanup Einstein grid
+        if (spacetimeGrid != nullptr)
+        {
+            delete spacetimeGrid;
+            spacetimeGrid = nullptr;
         }
 
         vkDestroyDevice(device, nullptr);
