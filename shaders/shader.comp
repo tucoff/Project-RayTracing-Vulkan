@@ -10,6 +10,9 @@ layout(binding = 1) uniform CameraUBO
     vec3 horizontal;
     vec3 vertical;
     bool relativistic_view_enabled; 
+    bool method_euler; // true for Euler, false for RK4
+    float step_size;
+    int max_steps;
 } cam;
 
 struct Ray 
@@ -29,26 +32,20 @@ const float G_REAL = 6.67430e-11;
 const float C_REAL = 299792458.0;
 const float SOLAR_MASS = 1.989e30;
 const float MASS = 10.0 * SOLAR_MASS;
- 
 const float RS_KM = (2.0 * G_REAL * MASS) / (C_REAL * C_REAL) / 1000.0; 
-
-const int MAX_STEPS = 1000;
-const float STEP_SIZE = 1.0; 
 
 const vec3 SPHERE_POS = vec3(0.0, 0.0, -150.0); 
 const float SPHERE_RADIUS = RS_KM;
 const vec3 RING_NORMAL = normalize(vec3(0.3, 1.0, 0.3));
 const float RING_INNER = RS_KM * 4.0; 
-const float RING_OUTER = RS_KM * 7.0; 
+const float RING_OUTER = RS_KM * 7.0;  
 
-bool hit_sphere(vec3 center, float radius, Ray ray, out float t_hit)
-{
+bool hit_sphere(vec3 center, float radius, Ray ray, out float t_hit) {
     vec3 oc = ray.origin - center;
     float a = dot(ray.direction, ray.direction);
     float b = 2.0 * dot(oc, ray.direction);
     float c = dot(oc, oc) - radius * radius;
     float discriminant = b * b - 4.0 * a * c;
-    
     if (discriminant >= 0.0) { 
         t_hit = (-b - sqrt(discriminant)) / (2.0 * a);
         if (t_hit < 0.0) t_hit = (-b + sqrt(discriminant)) / (2.0 * a);
@@ -57,11 +54,9 @@ bool hit_sphere(vec3 center, float radius, Ray ray, out float t_hit)
     return false;
 }
 
-bool intersect_plane(vec3 n, vec3 p0, Ray ray, out float t)
-{
+bool intersect_plane(vec3 n, vec3 p0, Ray ray, out float t) {
     float denom = dot(n, ray.direction);
-    if (abs(denom) > 1e-6) 
-    {
+    if (abs(denom) > 1e-6) {
         vec3 p0l0 = p0 - ray.origin;
         t = dot(p0l0, n) / denom; 
         return (t >= 0.0);
@@ -69,10 +64,8 @@ bool intersect_plane(vec3 n, vec3 p0, Ray ray, out float t)
     return false;
 }
 
-bool hit_ring(vec3 center, vec3 normal, float inner_radius, float outer_radius, Ray ray, out float t_hit)
-{
-    if (intersect_plane(normal, center, ray, t_hit)) 
-    {
+bool hit_ring(vec3 center, vec3 normal, float inner_radius, float outer_radius, Ray ray, out float t_hit) {
+    if (intersect_plane(normal, center, ray, t_hit)) {
         vec3 p = ray.origin + ray.direction * t_hit;
         vec3 v = p - center;
         float d2 = dot(v, v);
@@ -81,8 +74,7 @@ bool hit_ring(vec3 center, vec3 normal, float inner_radius, float outer_radius, 
     return false;
 }
 
-HitResult calculate_ray_collision(Ray r) 
-{
+HitResult calculate_ray_collision(Ray r) {
     HitResult closestHit;
     closestHit.didHit = false;
     closestHit.dst = 1e10; 
@@ -94,8 +86,8 @@ HitResult calculate_ray_collision(Ray r)
         if (t_sphere < closestHit.dst) {
             closestHit.didHit = true;
             closestHit.dst = t_sphere;
-            closestHit.color = vec3(0.0, 0.0, 0.0); 
-            if (!cam.relativistic_view_enabled) closestHit.color = vec3(0.74, 0.74, 0.74); 
+            closestHit.color = vec3(0.0); 
+            if (!cam.relativistic_view_enabled) closestHit.color = vec3(0.74); 
         }
     }
      
@@ -103,22 +95,63 @@ HitResult calculate_ray_collision(Ray r)
         if (t_ring < closestHit.dst) {
             closestHit.didHit = true;
             closestHit.dst = t_ring;
-            closestHit.color = vec3(1.0, 1.0, 1.0); 
+            closestHit.color = vec3(1.0); 
         }
     }
-
     return closestHit;
 }
 
-vec3 get_sky_color(vec3 direction) {
-    vec3 unit_direction = normalize(direction);
-    float t = 0.5 * (unit_direction.y + 1.0);
-    float f = 0.5 * (unit_direction.x + 1.0);
-    return mix(vec3(f, 0.0, 0.65), vec3(f, 0.65, 0.0), t); 
+vec3 get_gravity_accel(vec3 pos) {
+    vec3 toSphere = SPHERE_POS - pos;
+    float dist = length(toSphere);
+    if (dist < 0.0001) return vec3(0.0); 
+    
+    vec3 directionToSphere = toSphere / dist;
+
+    float deflection = (2.0 * RS_KM) / (dist * dist);
+    return directionToSphere * deflection;
 } 
 
-void main() 
-{
+void step_euler(inout Ray ray, float h) {
+    vec3 accel = get_gravity_accel(ray.origin);
+    ray.direction = normalize(ray.direction + accel * h);
+    ray.origin += ray.direction * h;
+}
+
+void step_rk4(inout Ray ray, float h) {
+    vec3 p = ray.origin;
+    vec3 v = ray.direction;
+
+    // k1
+    vec3 k1_p = v;
+    vec3 k1_v = get_gravity_accel(p);
+
+    // k2
+    vec3 k2_p = v + 0.5 * h * k1_v;
+    vec3 k2_v = get_gravity_accel(p + 0.5 * h * k1_p);
+
+    // k3
+    vec3 k3_p = v + 0.5 * h * k2_v;
+    vec3 k3_v = get_gravity_accel(p + 0.5 * h * k2_p);
+
+    // k4
+    vec3 k4_p = v + h * k3_v;
+    vec3 k4_v = get_gravity_accel(p + h * k3_p);
+
+    ray.origin += (h / 6.0) * (k1_p + 2.0 * k2_p + 2.0 * k3_p + k4_p);
+    vec3 new_dir = v + (h / 6.0) * (k1_v + 2.0 * k2_v + 2.0 * k3_v + k4_v);
+    ray.direction = normalize(new_dir);
+}
+
+vec3 get_sky_color(vec3 direction) {
+    vec3 unit_direction = normalize(direction); 
+    if (unit_direction.x < 0 && unit_direction.y > 0) return vec3(1,1,0);
+    else if (unit_direction.x >= 0 && unit_direction.y > 0) return vec3(1,0,0);
+    else if (unit_direction.x < 0 && unit_direction.y < 0) return vec3(0,1,0);
+    else return vec3(0,0,1);
+} 
+
+void main() {
     ivec2 pixel_coords = ivec2(gl_GlobalInvocationID.xy);
     ivec2 screen_size = imageSize(storageImage);
 
@@ -133,48 +166,43 @@ void main()
 
     vec3 finalColor = vec3(0.0);
      
-    if (!cam.relativistic_view_enabled) 
-    {
+    if (!cam.relativistic_view_enabled) {
         HitResult hit = calculate_ray_collision(r);
         if (hit.didHit) finalColor = hit.color;
         else finalColor = get_sky_color(r.direction);
     } 
-    else 
-    {
-        Ray curvedRay = r;
+    else { 
         bool hitSomething = false;
 
-        for (int step = 0; step < MAX_STEPS; step++)
-        { 
-            HitResult hitInfo = calculate_ray_collision(curvedRay);
+        for (int step = 0; step < cam.max_steps; step++) { 
+            HitResult hitInfo = calculate_ray_collision(r);
              
-            if (hitInfo.didHit && hitInfo.dst <= STEP_SIZE)
-            {
+            if (hitInfo.didHit && hitInfo.dst <= cam.step_size) {
                 finalColor = hitInfo.color;
                 hitSomething = true;
                 break; 
             }
              
-            vec3 toSphere = SPHERE_POS - curvedRay.origin;
-            float dist = length(toSphere);
-             
-            if (dist < SPHERE_RADIUS) {
-                finalColor = vec3(0.0, 0.0, 0.0);
+            if (length(SPHERE_POS - r.origin) < SPHERE_RADIUS) {
+                finalColor = vec3(0.0);
                 hitSomething = true;
                 break;
             }
              
-            vec3 directionToSphere = toSphere / dist;
-            float deflection = (2.0 * RS_KM) / (dist * dist); 
-            
-            curvedRay.direction = normalize(curvedRay.direction + directionToSphere * deflection * STEP_SIZE);
-            curvedRay.origin += curvedRay.direction * STEP_SIZE;
-             
-            if (length(curvedRay.origin - cam.origin) > 1000.0) break;
+            if (cam.method_euler) 
+            {
+                step_euler(r, cam.step_size);
+            } 
+            else 
+            {
+                step_rk4(r, cam.step_size);
+            }
+              
+            if (length(r.origin - cam.origin) > 2000.0) break; 
         }
 
         if (!hitSomething) {
-            finalColor = get_sky_color(curvedRay.direction);
+            finalColor = get_sky_color(r.direction);
         }
     }
 

@@ -87,7 +87,9 @@ struct CameraUBO {
     alignas(16) glm::vec3 horizontal;
     alignas(16) glm::vec3 vertical;
 	alignas(4) bool relativistic_view_enabled;
-    alignas(4) int mass;
+    alignas(4) bool method_euler;
+    alignas(4) float step_size;
+    alignas(4) int max_steps;
 };
 
 #pragma endregion
@@ -158,6 +160,9 @@ private:
     float hY = HEIGHT / 2.0f;
     float deltaTime = 0.0f;
     float lastFrame = 0.0f;
+    bool method = true;
+    float stepSize = 10.0f;
+    int maxSteps = 1000;
 
 #pragma endregion
 
@@ -1525,6 +1530,22 @@ private:
             relativisticViewEnabled = !relativisticViewEnabled;
 			std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
+
+        if (glfwGetKey(window, GLFW_KEY_M) == GLFW_PRESS)
+        {
+            method = !method;
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+
+        if (glfwGetKey(window, GLFW_KEY_Z) == GLFW_PRESS)
+        {
+            std::cin >> stepSize;
+        }
+
+        if (glfwGetKey(window, GLFW_KEY_X) == GLFW_PRESS)
+        {
+            std::cin >> maxSteps;
+        }
     }
 
 #pragma endregion
@@ -1818,7 +1839,9 @@ private:
         ubo.horizontal = horizontal;
         ubo.vertical = vertical;
 		ubo.relativistic_view_enabled = relativisticViewEnabled ? 1 : 0;
-		ubo.mass = 1.0f;
+        ubo.method_euler = method;
+        ubo.step_size = stepSize;
+        ubo.max_steps = maxSteps;
          
         memcpy(cameraBuffersMapped[currentImage], &ubo, sizeof(ubo));
     }
