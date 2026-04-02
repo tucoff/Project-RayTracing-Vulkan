@@ -91,6 +91,7 @@ struct CameraUBO {
     alignas(4) float step_size;
     alignas(4) int max_steps;
     alignas(4) int metric;
+    alignas(4) float spin_speed;
 };
 
 #pragma endregion
@@ -165,6 +166,7 @@ private:
     float stepSize = 10.0f;
     int maxSteps = 1000;
     int metric = 0; // 0 - Newton || 1 - Schwarzschild || 2 - Kerr
+    float spinSpeed = 1;
 
 #pragma endregion
 
@@ -1553,6 +1555,11 @@ private:
         {
             std::cin >> metric;
         }
+
+        if (glfwGetKey(window, GLFW_KEY_V) == GLFW_PRESS)
+        {
+            std::cin >> spinSpeed;
+        }
     }
 
 #pragma endregion
@@ -1850,6 +1857,7 @@ private:
         ubo.step_size = stepSize;
         ubo.max_steps = maxSteps;
         ubo.metric = metric;
+        ubo.spin_speed = spinSpeed;
          
         memcpy(cameraBuffersMapped[currentImage], &ubo, sizeof(ubo));
     }
