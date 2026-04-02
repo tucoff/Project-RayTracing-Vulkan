@@ -90,6 +90,7 @@ struct CameraUBO {
     alignas(4) bool method_euler;
     alignas(4) float step_size;
     alignas(4) int max_steps;
+    alignas(4) int metric;
 };
 
 #pragma endregion
@@ -163,6 +164,7 @@ private:
     bool method = true;
     float stepSize = 10.0f;
     int maxSteps = 1000;
+    int metric = 0; // 0 - Newton || 1 - Schwarzschild || 2 - Kerr
 
 #pragma endregion
 
@@ -1546,6 +1548,11 @@ private:
         {
             std::cin >> maxSteps;
         }
+
+        if (glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS)
+        {
+            std::cin >> metric;
+        }
     }
 
 #pragma endregion
@@ -1842,6 +1849,7 @@ private:
         ubo.method_euler = method;
         ubo.step_size = stepSize;
         ubo.max_steps = maxSteps;
+        ubo.metric = metric;
          
         memcpy(cameraBuffersMapped[currentImage], &ubo, sizeof(ubo));
     }
