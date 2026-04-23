@@ -37,6 +37,21 @@ const uint32_t HEIGHT = 800;
 
 const int MAX_FRAMES_IN_FLIGHT = 4;
 
+// Resolution presets
+struct Resolution {
+    uint32_t width;
+    uint32_t height;
+    const char* name;
+};
+
+const std::vector<Resolution> RESOLUTION_PRESETS = {
+    { 256, 144, "144p" },
+    { 455, 256, "256p" },
+    { 853, 480, "480p" },
+    { 1280, 720, "720p" },
+    { 1920, 1080, "1080p" }
+};
+
 const float CAMERA_SPEED = 40;
 const float MOUSE_SENSITIVITY = 0.05f;
 
@@ -169,6 +184,13 @@ private:
     int metric = 0; // 0 - Newton || 1 - Schwarzschild || 2 - Kerr
     float spinSpeed = 1;
     int currentScene = 1;
+    bool showFPS = false;
+    float fpsUpdateTimer = 0.0f;
+    float currentFPS = 0.0f;
+    int frameCount = 0;
+    uint32_t currentResolutionIndex = 0;
+    uint32_t currentWindowWidth = WIDTH;
+    uint32_t currentWindowHeight = HEIGHT;
 
 #pragma endregion
 
@@ -860,10 +882,20 @@ private:
     #pragma region CreateTextureImage()
     void createTextureImage()
     {
+        // Vulkan cubemap layer order (standard):
+        // Layer 0: +X (Right)
+        // Layer 1: -X (Left)  
+        // Layer 2: +Y (Up)
+        // Layer 3: -Y (Down)
+        // Layer 4: +Z (Front)
+        // Layer 5: -Z (Back)
         std::vector<std::string> skyboxFaces = {
-            "textures/Right.png", "textures/Left.png",
-            "textures/Up.png", "textures/Down.png",
-            "textures/Front.png", "textures/Back.png"
+            "textures/Left.png",    // Swap: Left goes to +X position
+            "textures/Right.png",   // Swap: Right goes to -X position
+            "textures/Up.png",      // +Y
+            "textures/Down.png",    // -Y
+            "textures/Front.png",   // +Z
+            "textures/Back.png"     // -Z
         };
 
         int texWidth, texHeight, texChannels;
@@ -1280,9 +1312,9 @@ private:
         samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
         samplerInfo.magFilter = VK_FILTER_LINEAR;
         samplerInfo.minFilter = VK_FILTER_LINEAR;
-        samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
         samplerInfo.anisotropyEnable = VK_TRUE;
         samplerInfo.maxAnisotropy = 16;
         samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
@@ -1652,6 +1684,17 @@ private:
 			std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
 
+        if (glfwGetKey(window, GLFW_KEY_L) == GLFW_PRESS)
+        {
+            showFPS = !showFPS;
+            if (showFPS) {
+                std::cout << "FPS Display: ON" << std::endl;
+            } else {
+                std::cout << "FPS Display: OFF" << std::endl;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+
         if (glfwGetKey(window, GLFW_KEY_M) == GLFW_PRESS)
         {
             method = !method;
@@ -1708,6 +1751,64 @@ private:
             currentScene = 6;
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
+
+        // Resolution switching with F1-F5 keys
+        if (glfwGetKey(window, GLFW_KEY_F1) == GLFW_PRESS)
+        {
+            setResolution(0); // 144p
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        if (glfwGetKey(window, GLFW_KEY_F2) == GLFW_PRESS)
+        {
+            setResolution(1); // 256p
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        if (glfwGetKey(window, GLFW_KEY_F3) == GLFW_PRESS)
+        {
+            setResolution(2); // 480p
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        if (glfwGetKey(window, GLFW_KEY_F4) == GLFW_PRESS)
+        {
+            setResolution(3); // 720p
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        if (glfwGetKey(window, GLFW_KEY_F5) == GLFW_PRESS)
+        {
+            setResolution(4); // 1080p
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+    }
+
+    void setResolution(uint32_t resolutionIndex)
+    {
+        if (resolutionIndex >= RESOLUTION_PRESETS.size()) return;
+
+        currentResolutionIndex = resolutionIndex;
+        const Resolution& resolution = RESOLUTION_PRESETS[resolutionIndex];
+        currentWindowWidth = resolution.width;
+        currentWindowHeight = resolution.height;
+
+        glfwSetWindowSize(window, resolution.width, resolution.height);
+        std::cout << "Resolution changed to: " << resolution.name << " (" << resolution.width << "x" << resolution.height << ")" << std::endl;
+
+        framebufferResized = true;
+    }
+
+    void updateFPS()
+    {
+        frameCount++;
+        fpsUpdateTimer += deltaTime;
+
+        if (fpsUpdateTimer >= 1.0f) {
+            currentFPS = frameCount / fpsUpdateTimer;
+            frameCount = 0;
+            fpsUpdateTimer = 0.0f;
+
+            if (showFPS) {
+                std::cout << "FPS: " << currentFPS << std::endl;
+            }
+        }
     }
 
 #pragma endregion
@@ -1724,13 +1825,31 @@ private:
             glfwPollEvents();
 
             processInput();
+            updateFPS();
 
-            glfwSetWindowPos(window, (1920/2)-WIDTH/2, (1080/2)-HEIGHT/2);
+            centerWindow();
 
             drawFrame();
         }
 
         vkDeviceWaitIdle(device);
+    }
+
+    void centerWindow()
+    {
+        const GLFWvidmode* mode = glfwGetVideoMode(glfwGetPrimaryMonitor());
+        if (!mode) return;
+
+        int screenWidth = mode->width;
+        int screenHeight = mode->height;
+        
+        int windowWidth, windowHeight;
+        glfwGetWindowSize(window, &windowWidth, &windowHeight);
+        
+        int xPos = (screenWidth - windowWidth) / 2;
+        int yPos = (screenHeight - windowHeight) / 2;
+        
+        glfwSetWindowPos(window, xPos, yPos);
     }
 
     void drawFrame()
