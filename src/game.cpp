@@ -92,6 +92,7 @@ struct CameraUBO {
     alignas(4) int max_steps;
     alignas(4) int metric;
     alignas(4) float spin_speed;
+    alignas(4) int current_scene;
 };
 
 #pragma endregion
@@ -167,6 +168,7 @@ private:
     int maxSteps = 1000;
     int metric = 0; // 0 - Newton || 1 - Schwarzschild || 2 - Kerr
     float spinSpeed = 1;
+    int currentScene = 1;
 
 #pragma endregion
 
@@ -858,18 +860,23 @@ private:
     #pragma region CreateTextureImage()
     void createTextureImage()
     {
-        const std::string TEXTURE_PATH = "textures/viking_room.png";
-        
+        std::vector<std::string> skyboxFaces = {
+            "textures/Right.png", "textures/Left.png",
+            "textures/Up.png", "textures/Down.png",
+            "textures/Front.png", "textures/Back.png"
+        };
+
         int texWidth, texHeight, texChannels;
-        stbi_uc* pixels = stbi_load(TEXTURE_PATH.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
-        VkDeviceSize imageSize = texWidth * texHeight * 4;
-
-        mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(texWidth, texHeight)))) + 1;
-
-        if (!pixels)
+        stbi_uc* dummy = stbi_load(skyboxFaces[0].c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+        
+        if (!dummy)
         {
-            throw std::runtime_error("failed to load texture image!");
+            throw std::runtime_error("failed to load cubemap faces!");
         }
+        stbi_image_free(dummy);
+
+        VkDeviceSize layerSize = texWidth * texHeight * 4;
+        VkDeviceSize imageSize = layerSize * 6;
 
         VkBuffer stagingBuffer;
         VkDeviceMemory stagingBufferMemory;
@@ -877,22 +884,60 @@ private:
 
         void* data;
         vkMapMemory(device, stagingBufferMemory, 0, imageSize, 0, &data);
-        memcpy(data, pixels, static_cast<size_t>(imageSize));
+
+        for (int i = 0; i < 6; i++)
+        {
+            stbi_uc* pixels = stbi_load(skyboxFaces[i].c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+            if (!pixels)
+            {
+                throw std::runtime_error("failed to load cubemap face: " + skyboxFaces[i]);
+            }
+            memcpy(static_cast<stbi_uc*>(data) + (layerSize * i), pixels, static_cast<size_t>(layerSize));
+            stbi_image_free(pixels);
+        }
         vkUnmapMemory(device, stagingBufferMemory);
 
-        stbi_image_free(pixels);
+        VkImageCreateInfo imageInfo{};
+        imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        imageInfo.imageType = VK_IMAGE_TYPE_2D;
+        imageInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
+        imageInfo.extent.width = texWidth;
+        imageInfo.extent.height = texHeight;
+        imageInfo.extent.depth = 1;
+        imageInfo.mipLevels = 1;
+        imageInfo.arrayLayers = 6;
+        imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+        imageInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        imageInfo.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 
-        createImage(texWidth, texHeight, mipLevels, VK_SAMPLE_COUNT_1_BIT, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL,
-            VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, textureImage, textureImageMemory);
+        if (vkCreateImage(device, &imageInfo, nullptr, &textureImage) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to create cubemap image!");
+        }
 
-        transitionImageLayout(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, mipLevels);
-        copyBufferToImage(stagingBuffer, textureImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
+        VkMemoryRequirements memRequirements;
+        vkGetImageMemoryRequirements(device, textureImage, &memRequirements);
+        VkMemoryAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize = memRequirements.size;
+        allocInfo.memoryTypeIndex = findMemoryTypeIndex(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        
+        if (vkAllocateMemory(device, &allocInfo, nullptr, &textureImageMemory) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to allocate cubemap memory!");
+        }
+        vkBindImageMemory(device, textureImage, textureImageMemory, 0);
 
-        generateMipmaps(textureImage, VK_FORMAT_R8G8B8A8_SRGB, texWidth, texHeight, mipLevels);
+        transitionImageLayout(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, 6);
+        copyBufferToImageCubemap(stagingBuffer, textureImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
+        transitionImageLayout(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 1, 6);
 
         vkDestroyBuffer(device, stagingBuffer, nullptr);
         vkFreeMemory(device, stagingBufferMemory, nullptr);
+        mipLevels = 1;
     }
 
     void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& vertexBuffer, VkDeviceMemory& vertexBufferMemory)
@@ -923,7 +968,7 @@ private:
         vkBindBufferMemory(device, vertexBuffer, vertexBufferMemory, 0);
     }
 
-    void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t mipLevels)
+    void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t mipLevels, uint32_t layerCount = 1)
     {
         (void)format;  
         VkCommandBuffer commandBuffer = beginSingleTimeCommand();
@@ -954,7 +999,7 @@ private:
         barrier.subresourceRange.baseMipLevel = 0;
         barrier.subresourceRange.levelCount = mipLevels;
         barrier.subresourceRange.baseArrayLayer = 0;
-        barrier.subresourceRange.layerCount = 1;
+        barrier.subresourceRange.layerCount = layerCount;
 
         VkPipelineStageFlags sourceStage;
         VkPipelineStageFlags destinationStage;
@@ -1027,6 +1072,38 @@ private:
             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
             1,
             &region
+        );
+
+        endSingleTimeCommand(commandBuffer);
+    }
+
+    void copyBufferToImageCubemap(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height)
+    {
+        VkCommandBuffer commandBuffer = beginSingleTimeCommand();
+        std::vector<VkBufferImageCopy> bufferCopyRegions;
+
+        for (uint32_t face = 0; face < 6; face++)
+        {
+            VkBufferImageCopy region{};
+            region.bufferOffset = face * width * height * 4;
+            region.bufferRowLength = 0;
+            region.bufferImageHeight = 0;
+            region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            region.imageSubresource.mipLevel = 0;
+            region.imageSubresource.baseArrayLayer = face;
+            region.imageSubresource.layerCount = 1;
+            region.imageOffset = { 0, 0, 0 };
+            region.imageExtent = { width, height, 1 };
+            bufferCopyRegions.push_back(region);
+        }
+
+        vkCmdCopyBufferToImage(
+            commandBuffer,
+            buffer,
+            image,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            static_cast<uint32_t>(bufferCopyRegions.size()),
+            bufferCopyRegions.data()
         );
 
         endSingleTimeCommand(commandBuffer);
@@ -1173,7 +1250,25 @@ private:
     #pragma region CreateTextureImageView()
     void createTextureImageView()
     {
-        textureImageView = createImageView(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, mipLevels);
+        VkImageViewCreateInfo viewInfo{};
+        viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        viewInfo.image = textureImage;
+        viewInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
+        viewInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
+        viewInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+        viewInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+        viewInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+        viewInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+        viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        viewInfo.subresourceRange.baseMipLevel = 0;
+        viewInfo.subresourceRange.levelCount = 1;
+        viewInfo.subresourceRange.baseArrayLayer = 0;
+        viewInfo.subresourceRange.layerCount = 6;
+
+        if (vkCreateImageView(device, &viewInfo, nullptr, &textureImageView) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to create cubemap image view!");
+        }
     }
 
     #pragma endregion
@@ -1240,7 +1335,14 @@ private:
 		uniformBufferLayoutBinding.pImmutableSamplers = nullptr;
 		uniformBufferLayoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
-        std::array<VkDescriptorSetLayoutBinding, 2> bindings = {storageImageLayoutBinding, uniformBufferLayoutBinding};
+        VkDescriptorSetLayoutBinding skyboxLayoutBinding{};
+        skyboxLayoutBinding.binding = 2;
+        skyboxLayoutBinding.descriptorCount = 1;
+        skyboxLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        skyboxLayoutBinding.pImmutableSamplers = nullptr;
+        skyboxLayoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+        std::array<VkDescriptorSetLayoutBinding, 3> bindings = {storageImageLayoutBinding, uniformBufferLayoutBinding, skyboxLayoutBinding};
         VkDescriptorSetLayoutCreateInfo layoutInfo{};
         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
@@ -1254,13 +1356,16 @@ private:
 
     void createDescriptorPool()
     { 
-        std::array<VkDescriptorPoolSize, 2> poolSizes{};
+        std::array<VkDescriptorPoolSize, 3> poolSizes{};
          
         poolSizes[0].type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
          
         poolSizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         poolSizes[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+
+        poolSizes[2].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        poolSizes[2].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
 
         VkDescriptorPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -1303,7 +1408,12 @@ private:
             bufferInfo.offset = 0;
             bufferInfo.range = sizeof(CameraUBO);
 
-            std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
+            VkDescriptorImageInfo skyboxInfo{};
+            skyboxInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            skyboxInfo.imageView = textureImageView;
+            skyboxInfo.sampler = textureSampler;
+
+            std::array<VkWriteDescriptorSet, 3> descriptorWrites{};
              
             descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             descriptorWrites[0].dstSet = descriptorSets[i]; 
@@ -1318,6 +1428,13 @@ private:
             descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
             descriptorWrites[1].descriptorCount = 1;
             descriptorWrites[1].pBufferInfo = &bufferInfo;
+
+            descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWrites[2].dstSet = descriptorSets[i];
+            descriptorWrites[2].dstBinding = 2;
+            descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            descriptorWrites[2].descriptorCount = 1;
+            descriptorWrites[2].pImageInfo = &skyboxInfo;
 
             vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
         }
@@ -1559,6 +1676,37 @@ private:
         if (glfwGetKey(window, GLFW_KEY_V) == GLFW_PRESS)
         {
             std::cin >> spinSpeed;
+        }
+
+        if (glfwGetKey(window, GLFW_KEY_1) == GLFW_PRESS)
+        {
+            currentScene = 1;
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        if (glfwGetKey(window, GLFW_KEY_2) == GLFW_PRESS)
+        {
+            currentScene = 2;
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        if (glfwGetKey(window, GLFW_KEY_3) == GLFW_PRESS)
+        {
+            currentScene = 3;
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        if (glfwGetKey(window, GLFW_KEY_4) == GLFW_PRESS)
+        {
+            currentScene = 4;
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        if (glfwGetKey(window, GLFW_KEY_5) == GLFW_PRESS)
+        {
+            currentScene = 5;
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        if (glfwGetKey(window, GLFW_KEY_6) == GLFW_PRESS)
+        {
+            currentScene = 6;
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
     }
 
@@ -1858,6 +2006,7 @@ private:
         ubo.max_steps = maxSteps;
         ubo.metric = metric;
         ubo.spin_speed = spinSpeed;
+        ubo.current_scene = currentScene;
          
         memcpy(cameraBuffersMapped[currentImage], &ubo, sizeof(ubo));
     }

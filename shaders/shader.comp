@@ -9,13 +9,27 @@ layout(binding = 1) uniform CameraUBO
     vec3 lower_left_corner;
     vec3 horizontal;
     vec3 vertical;
-    bool relativistic_view_enabled; 
-    bool method_euler; // true for Euler, false for RK4
+    bool relativistic_view_enabled;
+    bool method_euler;
     float step_size;
     int max_steps;
     int metric;
     float spin_speed;
+    int current_scene; 
 } cam;
+ 
+layout(binding = 2) uniform samplerCube skyboxSampler;
+
+struct SceneConfig {
+    vec3 spherePos;
+    float sphereRadius;
+    float sphereMass;
+    vec3 sphere2Pos;
+    float sphere2Radius;
+    float sphere2Mass;
+    bool hasRing;
+    bool useUniverseSkybox;
+};
 
 struct Ray 
 {
@@ -36,14 +50,52 @@ const float SOLAR_MASS = 1.989e30;
 const float MASS = 10.0 * SOLAR_MASS;
 const float RS_KM = (2.0 * G_REAL * MASS) / (C_REAL * C_REAL) / 1000.0; 
 
-const vec3 SPHERE_POS = vec3(0.0, 0.0, -150.0); 
-const float SPHERE_RADIUS = RS_KM;
 const vec3 RING_NORMAL = normalize(vec3(0.3, 1.0, 0.3));
 const float RING_INNER = RS_KM * 4.0; 
 const float RING_OUTER = RS_KM * 7.0;  
 
 const vec3 KERR_SPIN_AXIS = normalize(vec3(0.0, 1.0, 0.0));
 const float KERR_SPIN_AMOUNT = RS_KM;
+
+SceneConfig load_scene_config() {
+    SceneConfig config;
+     
+    config.spherePos = vec3(0.0, 0.0, -150.0);
+    config.sphereRadius = RS_KM;
+    config.sphereMass = MASS;
+    config.sphere2Pos = vec3(0.0);
+    config.sphere2Radius = 0.0;
+    config.sphere2Mass = 0.0;
+    config.hasRing = false;
+    config.useUniverseSkybox = false;
+
+    if (cam.current_scene == 1) {
+        config.useUniverseSkybox = false;
+    } else if (cam.current_scene == 2) {
+        config.useUniverseSkybox = true;
+    } else if (cam.current_scene == 3) {
+        config.hasRing = true;
+        config.useUniverseSkybox = true;
+    } else if (cam.current_scene == 4) {
+        config.spherePos = vec3(-50.0, 0.0, -150.0);
+        config.sphere2Pos = vec3(50.0, 0.0, -150.0);
+        config.sphere2Radius = RS_KM;
+        config.sphere2Mass = MASS;
+    } else if (cam.current_scene == 5) {
+        config.spherePos = vec3(-50.0, 0.0, -150.0);
+        config.sphere2Pos = vec3(50.0, 0.0, -150.0);
+        config.sphere2Radius = RS_KM;
+        config.sphere2Mass = MASS;
+        config.useUniverseSkybox = true;
+    } else if (cam.current_scene == 6) {
+        config.sphereRadius = RS_KM * 2.0;
+        config.sphereMass = MASS * 2.0;
+        config.sphere2Pos = vec3(15.0, 0.0, -100.0);
+        config.sphere2Radius = RS_KM * 0.5;
+        config.useUniverseSkybox = true;
+    }
+    return config;
+}
 
 bool hit_sphere(vec3 center, float radius, Ray ray, out float t_hit) {
     vec3 oc = ray.origin - center;
@@ -79,35 +131,41 @@ bool hit_ring(vec3 center, vec3 normal, float inner_radius, float outer_radius, 
     return false;
 }
 
-HitResult calculate_ray_collision(Ray r) {
+HitResult calculate_ray_collision(Ray r, SceneConfig scene) {
     HitResult closestHit;
     closestHit.didHit = false;
     closestHit.dst = 1e10; 
 
     float t_sphere = 1e10;
-    float t_ring = 1e10;
      
-    if (hit_sphere(SPHERE_POS, SPHERE_RADIUS, r, t_sphere)) {
-        if (t_sphere < closestHit.dst) {
-            closestHit.didHit = true;
-            closestHit.dst = t_sphere;
-            closestHit.color = vec3(0.0); 
-            if (!cam.relativistic_view_enabled) closestHit.color = vec3(0.74); 
-        }
+    if (hit_sphere(scene.spherePos, scene.sphereRadius, r, t_sphere)) {
+        closestHit.didHit = true;
+        closestHit.dst = t_sphere;
+        closestHit.color = cam.relativistic_view_enabled ? vec3(0.0) : vec3(0.74); 
     }
      
-    if (hit_ring(SPHERE_POS, RING_NORMAL, RING_INNER, RING_OUTER, r, t_ring)) {
-        if (t_ring < closestHit.dst) {
+    if (scene.sphere2Radius > 0.0) {
+        float t_sphere2 = 1e10;
+        if (hit_sphere(scene.sphere2Pos, scene.sphere2Radius, r, t_sphere2) && t_sphere2 < closestHit.dst) {
+            closestHit.didHit = true;
+            closestHit.dst = t_sphere2;
+            closestHit.color = cam.relativistic_view_enabled ? vec3(0.0) : vec3(0.74); 
+        }
+    }
+      
+    if (scene.hasRing) {
+        float t_ring = 1e10;
+        if (hit_ring(scene.spherePos, RING_NORMAL, RING_INNER, RING_OUTER, r, t_ring) && t_ring < closestHit.dst) {
             closestHit.didHit = true;
             closestHit.dst = t_ring;
             closestHit.color = vec3(1.0); 
         }
     }
     return closestHit;
-}
-
-vec3 get_gravity_accel(vec3 pos, vec3 v) {
-    vec3 toSphere = SPHERE_POS - pos; // Vector FROM pos TO center
+} 
+ 
+vec3 get_gravity_accel(vec3 pos, vec3 v, SceneConfig scene) {
+    vec3 toSphere = scene.spherePos - pos; 
     float dist = length(toSphere);
     
     if (dist < 0.0001) return vec3(0.0); 
@@ -116,74 +174,85 @@ vec3 get_gravity_accel(vec3 pos, vec3 v) {
     float dist3 = dist2 * dist;
     float dist5 = dist3 * dist2;
 
+    vec3 accel = vec3(0.0);
+
     if (cam.metric == 0) {
         // 0 - Newton: a = (GM / r^3) * r_vector
-        // GM is Rs/2 in natural units
-        return toSphere * (RS_KM * 0.5) / dist3;
+        accel = toSphere * (RS_KM * 0.5) / dist3;
     } 
     else if (cam.metric == 1) {
-        // 1 - Schwarzschild: a = -1.5 * Rs * |r x v|^2 / r^5 * (pos - center)
-        // Since toSphere points towards the center, we flip the sign (remove the negative)
+        // 1 - Schwarzschild
         vec3 h = cross(-toSphere, v);
         float h2 = dot(h, h);
-        return toSphere * (1.5 * RS_KM * h2) / dist5;
+        accel = toSphere * (1.5 * RS_KM * h2) / dist5;
     } 
     else {
-        // 2 - Kerr: Schwarzschild + Lense-Thirring (Frame Dragging)
-        vec3 r_vec = -toSphere; // Vector from center to pos
+        // 2 - Kerr: Schwarzschild + Lense-Thirring
+        vec3 r_vec = -toSphere; 
         vec3 h = cross(r_vec, v);
         float h2 = dot(h, h);
         
-        // Base Schwarzschild term
         vec3 a_schwarzschild = -r_vec * (1.5 * RS_KM * h2) / dist5;
-
-        // Gravitomagnetic frame dragging term
         vec3 spin_vec = KERR_SPIN_AXIS * KERR_SPIN_AMOUNT * cam.spin_speed;
         vec3 H = (2.0 / dist5) * (3.0 * r_vec * dot(spin_vec, r_vec) - spin_vec * dist2);
         vec3 a_frame_drag = cross(v, H);
 
-        return a_schwarzschild + a_frame_drag;
+        accel = a_schwarzschild + a_frame_drag;
     }
-} 
+     
+    if (scene.sphere2Radius > 0.0) {
+        vec3 toSphere2 = scene.sphere2Pos - pos;
+        float dist2_2 = length(toSphere2);
+        if (dist2_2 > 0.0001) {
+            vec3 accel2 = toSphere2 * (RS_KM * 0.5) / (dist2_2 * dist2_2 * dist2_2);
+            accel += accel2;
+        }
+    }
 
-void step_euler(inout Ray ray, float h) {
+    return accel;
+} 
+ 
+void step_euler(inout Ray ray, float h, SceneConfig scene) {
     vec3 p = ray.origin;
     vec3 v = ray.direction;
     
-    vec3 accel = get_gravity_accel(p, v);
+    vec3 accel = get_gravity_accel(p, v, scene);
     
     ray.direction = normalize(v + accel * h);
     ray.origin += ray.direction * h;
 }
-
-void step_rk4(inout Ray ray, float h) {
+ 
+void step_rk4(inout Ray ray, float h, SceneConfig scene) {
     vec3 p = ray.origin;
     vec3 v = ray.direction;
 
     // k1
     vec3 k1_p = v;
-    vec3 k1_v = get_gravity_accel(p, v);
+    vec3 k1_v = get_gravity_accel(p, v, scene);
 
     // k2
     vec3 k2_p = v + 0.5 * h * k1_v;
-    vec3 k2_v = get_gravity_accel(p + 0.5 * h * k1_p, v + 0.5 * h * k1_v);
+    vec3 k2_v = get_gravity_accel(p + 0.5 * h * k1_p, v + 0.5 * h * k1_v, scene);
 
     // k3
     vec3 k3_p = v + 0.5 * h * k2_v;
-    vec3 k3_v = get_gravity_accel(p + 0.5 * h * k2_p, v + 0.5 * h * k2_v);
+    vec3 k3_v = get_gravity_accel(p + 0.5 * h * k2_p, v + 0.5 * h * k2_v, scene);
 
     // k4
     vec3 k4_p = v + h * k3_v;
-    vec3 k4_v = get_gravity_accel(p + h * k3_p, v + h * k3_v);
+    vec3 k4_v = get_gravity_accel(p + h * k3_p, v + h * k3_v, scene);
 
     ray.origin += (h / 6.0) * (k1_p + 2.0 * k2_p + 2.0 * k3_p + k4_p);
     vec3 new_dir = v + (h / 6.0) * (k1_v + 2.0 * k2_v + 2.0 * k3_v + k4_v);
     
-    // Normalize at the very end of the RK4 step to maintain light speed c=1
     ray.direction = normalize(new_dir);
 } 
-
-vec3 get_sky_color(vec3 direction) {
+ 
+vec3 get_sky_color(vec3 direction, bool use_texture) {
+    if (use_texture) { 
+        return texture(skyboxSampler, direction).rgb;
+    }
+    
     vec3 unit_direction = normalize(direction); 
     if (unit_direction.x < 0 && unit_direction.y > 0) return vec3(1,1,0);
     else if (unit_direction.x >= 0 && unit_direction.y > 0) return vec3(1,0,0);
@@ -196,7 +265,9 @@ void main() {
     ivec2 screen_size = imageSize(storageImage);
 
     if (pixel_coords.x >= screen_size.x || pixel_coords.y >= screen_size.y) return;
-    
+     
+    SceneConfig scene = load_scene_config();
+
     float u = float(pixel_coords.x) / float(screen_size.x - 1);
     float v = float(pixel_coords.y) / float(screen_size.y - 1);
      
@@ -206,43 +277,43 @@ void main() {
 
     vec3 finalColor = vec3(0.0);
      
-    if (!cam.relativistic_view_enabled) {
-        HitResult hit = calculate_ray_collision(r);
+    if (!cam.relativistic_view_enabled) { 
+        HitResult hit = calculate_ray_collision(r, scene);
         if (hit.didHit) finalColor = hit.color;
-        else finalColor = get_sky_color(r.direction);
+        else finalColor = get_sky_color(r.direction, scene.useUniverseSkybox);
     } 
     else { 
         bool hitSomething = false;
 
-        for (int step = 0; step < cam.max_steps; step++) { 
-            HitResult hitInfo = calculate_ray_collision(r);
+        for (int step = 0; step < cam.max_steps; step++) {  
+            HitResult hitInfo = calculate_ray_collision(r, scene);
              
             if (hitInfo.didHit && hitInfo.dst <= cam.step_size) {
                 finalColor = hitInfo.color;
                 hitSomething = true;
                 break; 
             }
-             
-            if (length(SPHERE_POS - r.origin) < SPHERE_RADIUS) {
+              
+            if (length(scene.spherePos - r.origin) < scene.sphereRadius) {
                 finalColor = vec3(0.0);
                 hitSomething = true;
                 break;
             }
-             
+              
             if (cam.method_euler) 
             {
-                step_euler(r, cam.step_size);
+                step_euler(r, cam.step_size, scene);
             } 
             else 
             {
-                step_rk4(r, cam.step_size);
+                step_rk4(r, cam.step_size, scene);
             }
               
             if (length(r.origin - cam.origin) > 2000.0) break; 
         }
 
         if (!hitSomething) {
-            finalColor = get_sky_color(r.direction);
+            finalColor = get_sky_color(r.direction, scene.useUniverseSkybox);
         }
     }
 
