@@ -170,7 +170,6 @@ HitResult calculate_ray_collision(Ray r, SceneConfig scene) {
 vec3 get_gravity_accel(vec3 pos, vec3 v, SceneConfig scene) {
     vec3 toSphere = scene.spherePos - pos; 
     float dist = length(toSphere);
-    
     if (dist < 0.0001) return vec3(0.0); 
 
     float dist2 = dist * dist;
@@ -180,26 +179,17 @@ vec3 get_gravity_accel(vec3 pos, vec3 v, SceneConfig scene) {
     vec3 accel = vec3(0.0);
 
     if (cam.metric == 0) {
-        // 0 - Newton: a = (GM / r^3) * r_vector
-        accel = toSphere * (RS_KM * 0.5) / dist3;
-    } 
-    else if (cam.metric == 1) {
-        // 1 - Schwarzschild
+        accel = toSphere * (scene.sphereRadius * 0.5) / dist3;
+    } else if (cam.metric == 1) {
         vec3 h = cross(-toSphere, v);
-        float h2 = dot(h, h);
-        accel = toSphere * (1.5 * RS_KM * h2) / dist5;
-    } 
-    else {
-        // 2 - Kerr: Schwarzschild + Lense-Thirring
+        accel = toSphere * (1.5 * scene.sphereRadius * dot(h, h)) / dist5;
+    } else {
         vec3 r_vec = -toSphere; 
         vec3 h = cross(r_vec, v);
-        float h2 = dot(h, h);
-        
-        vec3 a_schwarzschild = -r_vec * (1.5 * RS_KM * h2) / dist5;
-        vec3 spin_vec = KERR_SPIN_AXIS * KERR_SPIN_AMOUNT * cam.spin_speed;
+        vec3 a_schwarzschild = -r_vec * (1.5 * scene.sphereRadius * dot(h, h)) / dist5;
+        vec3 spin_vec = KERR_SPIN_AXIS * scene.sphereRadius * cam.spin_speed;
         vec3 H = (2.0 / dist5) * (3.0 * r_vec * dot(spin_vec, r_vec) - spin_vec * dist2);
         vec3 a_frame_drag = cross(v, H);
-
         accel = a_schwarzschild + a_frame_drag;
     }
      
@@ -207,13 +197,28 @@ vec3 get_gravity_accel(vec3 pos, vec3 v, SceneConfig scene) {
         vec3 toSphere2 = scene.sphere2Pos - pos;
         float dist2_2 = length(toSphere2);
         if (dist2_2 > 0.0001) {
-            vec3 accel2 = toSphere2 * (RS_KM * 0.5) / (dist2_2 * dist2_2 * dist2_2);
-            accel += accel2;
+            float d2_2 = dist2_2 * dist2_2;
+            float d2_3 = d2_2 * dist2_2;
+            float d2_5 = d2_3 * d2_2;
+
+            if (cam.metric == 0) {
+                accel += toSphere2 * (scene.sphere2Radius * 0.5) / d2_3;
+            } else if (cam.metric == 1) {
+                vec3 h2 = cross(-toSphere2, v);
+                accel += toSphere2 * (1.5 * scene.sphere2Radius * dot(h2, h2)) / d2_5;
+            } else {
+                vec3 r_vec2 = -toSphere2; 
+                vec3 h2 = cross(r_vec2, v);
+                vec3 a_schwarzschild2 = -r_vec2 * (1.5 * scene.sphere2Radius * dot(h2, h2)) / d2_5;
+                vec3 spin_vec2 = KERR_SPIN_AXIS * scene.sphere2Radius * cam.spin_speed;
+                vec3 H2 = (2.0 / d2_5) * (3.0 * r_vec2 * dot(spin_vec2, r_vec2) - spin_vec2 * d2_2);
+                vec3 a_frame_drag2 = cross(v, H2);
+                accel += a_schwarzschild2 + a_frame_drag2;
+            }
         }
     }
-
     return accel;
-} 
+}
  
 void step_euler(inout Ray ray, float h, SceneConfig scene) {
     vec3 p = ray.origin;
@@ -275,7 +280,10 @@ void main() {
 
     float u = float(pixel_coords.x) / float(screen_size.x - 1);
     float v = float(pixel_coords.y) / float(screen_size.y - 1);
-     
+    
+    u = 1.0 - u; 
+    v = 1.0 - v;
+
     Ray r;
     r.origin = cam.origin;
     r.direction = normalize(cam.lower_left_corner + (u * cam.horizontal) + (v * cam.vertical) - cam.origin);
@@ -292,19 +300,25 @@ void main() {
 
         for (int step = 0; step < cam.max_steps; step++) {  
             HitResult hitInfo = calculate_ray_collision(r, scene);
-             
+              
             if (hitInfo.didHit && hitInfo.dst <= cam.step_size) {
                 finalColor = hitInfo.color;
                 hitSomething = true;
                 break; 
             }
-              
+               
             if (length(scene.spherePos - r.origin) < scene.sphereRadius) {
                 finalColor = vec3(0.0);
                 hitSomething = true;
                 break;
             }
-              
+               
+            if (scene.sphere2Radius > 0.0 && length(scene.sphere2Pos - r.origin) < scene.sphere2Radius) {
+                finalColor = vec3(0.0);
+                hitSomething = true;
+                break;
+            }
+               
             if (cam.method_euler) 
             {
                 step_euler(r, cam.step_size, scene);
@@ -313,7 +327,7 @@ void main() {
             {
                 step_rk4(r, cam.step_size, scene);
             }
-              
+               
             if (length(r.origin - cam.origin) > 2000.0) break; 
         }
 

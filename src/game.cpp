@@ -1625,8 +1625,8 @@ private:
             firstMouse = false;
         }
 
-        float xoffset = xpos - hX;
-        float yoffset = ypos - hY; 
+        float xoffset = hX - xpos;
+        float yoffset = hY - ypos;
         hX = xpos;
         hY = ypos;
 
@@ -1659,13 +1659,13 @@ private:
         if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
             cameraPos -= speed * cameraFront;
         if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-            cameraPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * speed;
-        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
             cameraPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * speed;
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+            cameraPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * speed;
         if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
-            cameraPos -= speed * cameraUp;
-        if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
             cameraPos += speed * cameraUp;
+        if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
+            cameraPos -= speed * cameraUp;
             
         if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
             glfwSetWindowShouldClose(window, true);
