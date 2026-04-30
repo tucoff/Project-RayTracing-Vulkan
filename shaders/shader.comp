@@ -57,6 +57,9 @@ const float RING_OUTER = RS_KM * 7.0;
 const vec3 KERR_SPIN_AXIS = normalize(vec3(0.0, 1.0, 0.0));
 const float KERR_SPIN_AMOUNT = RS_KM;
 
+const float SKYBOX_BRIGHTNESS = 0.67; 
+const float SKYBOX_SATURATION = 1.0;
+
 SceneConfig load_scene_config() {
     SceneConfig config;
      
@@ -249,8 +252,10 @@ void step_rk4(inout Ray ray, float h, SceneConfig scene) {
 } 
  
 vec3 get_sky_color(vec3 direction, bool use_texture) {
-    if (use_texture) { 
-        return texture(skyboxSampler, direction).rgb;
+    if (use_texture) {  
+        vec3 skyColor = texture(skyboxSampler, direction).rgb * SKYBOX_BRIGHTNESS; 
+        
+        return skyColor;
     }
     
     vec3 unit_direction = normalize(direction); 
@@ -316,6 +321,12 @@ void main() {
             finalColor = get_sky_color(r.direction, scene.useUniverseSkybox);
         }
     }
+
+    finalColor *= 1.2; 
+         
+    finalColor = finalColor / (finalColor + vec3(0.15)); 
+         
+    finalColor = pow(finalColor, vec3(1.0 / 2.2)); 
 
     imageStore(storageImage, pixel_coords, vec4(finalColor, 1.0));
 }
