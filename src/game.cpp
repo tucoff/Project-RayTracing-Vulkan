@@ -26,6 +26,10 @@
 #include <limits>
 #include <algorithm>
 #include <thread>
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <stb_image_write.h>
+#include <filesystem> 
+namespace fs = std::filesystem;
 
 #pragma endregion
 
@@ -55,7 +59,7 @@ const std::vector<Resolution> RESOLUTION_PRESETS = {
 const float CAMERA_SPEED = 40;
 const float MOUSE_SENSITIVITY = 0.05f;
 
-bool relativisticViewEnabled = false;
+bool relativisticViewEnabled = true;
 bool traceMode = false;
 
 const std::vector<const char*> validationLayers =
@@ -111,6 +115,30 @@ struct CameraUBO {
 };
 
 #pragma endregion
+
+class Game;
+
+class BenchmarkAutomator {
+public:
+    enum State { CONFIGURING, WARMUP, SAMPLING, SAVING, FINISHED };
+    State currentState = CONFIGURING;
+
+    int resIndex = 0;
+    int metricIndex = 0;
+    int integratorIndex = 0;
+    int sceneIndex = 1;
+
+    float timer = 0.0f;
+    int frameCount = 0;
+    const float SAMPLING_DURATION = 5.0f;
+
+    void update(float deltaTime, Game* game);
+
+private:
+    void applyConfig(Game* game);
+    void advance(Game* game);
+    void saveBenchmark(float fps, Game* game);
+};
 
 class Game
 {   
@@ -178,12 +206,13 @@ private:
     float hY = HEIGHT / 2.0f;
     float deltaTime = 0.0f;
     float lastFrame = 0.0f;
-    bool method = true;
+    public:bool method = true;
     float stepSize = 10.0f;
     int maxSteps = 1000;
-    int metric = 0; // 0 - Newton || 1 - Schwarzschild || 2 - Kerr
+    public:int metric = 0; // 0 - Newton || 1 - Schwarzschild || 2 - Kerr
     float spinSpeed = 1;
     int currentScene = 1;
+    bool isInputActive = false;
     bool showFPS = false;
     float fpsUpdateTimer = 0.0f;
     float currentFPS = 0.0f;
@@ -1650,6 +1679,8 @@ private:
 
     void processInput() 
     {
+        if (isInputActive) return;
+        
         float speed = CAMERA_SPEED * deltaTime;
 
         if (traceMode) speed = 0.0f;
@@ -1703,22 +1734,30 @@ private:
 
         if (glfwGetKey(window, GLFW_KEY_Z) == GLFW_PRESS)
         {
+            isInputActive = true;
             std::cin >> stepSize;
+            isInputActive = false;
         }
 
         if (glfwGetKey(window, GLFW_KEY_X) == GLFW_PRESS)
         {
+            isInputActive = true;
             std::cin >> maxSteps;
+            isInputActive = false;
         }
 
         if (glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS)
         {
+            isInputActive = true;
             std::cin >> metric;
+            isInputActive = false;
         }
 
         if (glfwGetKey(window, GLFW_KEY_V) == GLFW_PRESS)
         {
+            isInputActive = true;
             std::cin >> spinSpeed;
+            isInputActive = false;
         }
 
         if (glfwGetKey(window, GLFW_KEY_1) == GLFW_PRESS)
@@ -1780,7 +1819,7 @@ private:
         }
     }
 
-    void setResolution(uint32_t resolutionIndex)
+    public:void setResolution(uint32_t resolutionIndex)
     {
         if (resolutionIndex >= RESOLUTION_PRESETS.size()) return;
 
@@ -1816,13 +1855,17 @@ private:
 #pragma region MainLoop()
     void mainLoop()
     {
+        BenchmarkAutomator automator;
+
         while (!glfwWindowShouldClose(window))
-        {
+        {  
             float currentTime = static_cast<float>(glfwGetTime());
             deltaTime = currentTime - lastFrame;
             lastFrame = currentTime;
 
             glfwPollEvents();
+
+            automator.update(deltaTime, this);
 
             processInput();
             updateFPS();
@@ -1833,6 +1876,71 @@ private:
         }
 
         vkDeviceWaitIdle(device);
+    }
+
+    void saveScreenshot(const char* filename) {
+        vkDeviceWaitIdle(device);
+        
+        // Cria pasta se não existir
+        fs::path filePath(filename);
+        fs::create_directories(filePath.parent_path());
+         
+        VkDeviceSize imageSize = swapChainExtent.width * swapChainExtent.height * 4;
+        VkBuffer stagingBuffer;
+        VkDeviceMemory stagingBufferMemory;
+
+        createBuffer(imageSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            stagingBuffer, stagingBufferMemory);
+
+        VkCommandBuffer commandBuffer = beginSingleTimeCommand();
+        
+        // Transição para TRANSFER_SRC_OPTIMAL
+        VkImageMemoryBarrier preTransferBarrier{};
+        preTransferBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        preTransferBarrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        preTransferBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        preTransferBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        preTransferBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        preTransferBarrier.image = swapChainImages[currentFrame];
+        preTransferBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        preTransferBarrier.subresourceRange.baseMipLevel = 0;
+        preTransferBarrier.subresourceRange.levelCount = 1;
+        preTransferBarrier.subresourceRange.baseArrayLayer = 0;
+        preTransferBarrier.subresourceRange.layerCount = 1;
+        preTransferBarrier.srcAccessMask = 0;
+        preTransferBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+
+        vkCmdPipelineBarrier(commandBuffer,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            0, 0, nullptr, 0, nullptr, 1, &preTransferBarrier);
+         
+        VkBufferImageCopy region{};
+        region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        region.imageSubresource.layerCount = 1;
+        region.imageExtent = { swapChainExtent.width, swapChainExtent.height, 1 };
+
+        vkCmdCopyImageToBuffer(commandBuffer, swapChainImages[currentFrame], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            stagingBuffer, 1, &region);
+
+        endSingleTimeCommand(commandBuffer);
+
+        void* data;
+        vkMapMemory(device, stagingBufferMemory, 0, imageSize, 0, &data);
+         
+        if (stbi_write_png(filename, swapChainExtent.width, swapChainExtent.height, 4, (unsigned char*)data, swapChainExtent.width * 4))
+        {
+            std::cout << "Screenshot salvo: " << filename << std::endl;
+        }
+        else
+        {
+            std::cerr << "Erro ao salvar screenshot: " << filename << std::endl;
+        }
+
+        vkUnmapMemory(device, stagingBufferMemory);
+        vkDestroyBuffer(device, stagingBuffer, nullptr);
+        vkFreeMemory(device, stagingBufferMemory, nullptr);
     }
 
     void centerWindow()
@@ -2008,14 +2116,14 @@ private:
 
         vkCmdDispatch(commandBuffer, groupCountX, groupCountY, 1);  
              
-        VkImageMemoryBarrier computeToTransferBarrier{};
-        computeToTransferBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        computeToTransferBarrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
-        computeToTransferBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-        computeToTransferBarrier.image = storageImage;
-        computeToTransferBarrier.subresourceRange = storageImageBarrier.subresourceRange; 
-        computeToTransferBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-        computeToTransferBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        VkImageMemoryBarrier afterComputeBarrier{};
+        afterComputeBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        afterComputeBarrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+        afterComputeBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+        afterComputeBarrier.image = storageImage;
+        afterComputeBarrier.subresourceRange = storageImageBarrier.subresourceRange; 
+        afterComputeBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        afterComputeBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
              
         VkImageMemoryBarrier swapChainBarrier{};
         swapChainBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -2026,7 +2134,7 @@ private:
         swapChainBarrier.srcAccessMask = 0;
         swapChainBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 
-        std::array<VkImageMemoryBarrier, 2> barriers = { computeToTransferBarrier, swapChainBarrier };
+        std::array<VkImageMemoryBarrier, 2> barriers = { afterComputeBarrier, swapChainBarrier };
 
         vkCmdPipelineBarrier(
             commandBuffer,
@@ -2047,7 +2155,7 @@ private:
 
         vkCmdCopyImage(
             commandBuffer,
-            storageImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            storageImage, VK_IMAGE_LAYOUT_GENERAL,
             swapChainImages[imageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
             1, &copyRegion
         );
@@ -2241,7 +2349,80 @@ private:
 
 #pragma endregion
 
+
+
+
 };
+
+inline void BenchmarkAutomator::update(float deltaTime, Game* game) {
+    if (currentState == FINISHED) return;
+
+    timer += deltaTime;
+
+    switch (currentState) {
+    case CONFIGURING:
+        applyConfig(game);
+        timer = 0;
+        currentState = WARMUP;
+        break;
+
+    case WARMUP:
+        if (timer >= 1.0f) {
+            timer = 0;
+            frameCount = 0;
+            currentState = SAMPLING;
+            std::cout << "Iniciando Amostragem: Res=" << RESOLUTION_PRESETS[resIndex].name
+                << " Metric=" << metricIndex << " Scene=" << sceneIndex << std::endl;
+        }
+        break;
+
+    case SAMPLING:
+        frameCount++;
+        if (timer >= SAMPLING_DURATION) {
+            float avgFps = frameCount / timer;
+            saveBenchmark(avgFps, game);
+            advance(game);
+        }
+        break;
+    }
+}
+
+inline void BenchmarkAutomator::applyConfig(Game* game) {
+    game->setResolution(resIndex);
+    game->metric = metricIndex;
+    game->method = (integratorIndex == 0);
+    game->currentScene = sceneIndex;
+}
+
+inline void BenchmarkAutomator::advance(Game* game) {
+    sceneIndex++;
+    if (sceneIndex > 5) {
+        sceneIndex = 1;
+        integratorIndex++;
+        if (integratorIndex > 1) {
+            integratorIndex = 0;
+            metricIndex++;
+            if (metricIndex > 2) {
+                metricIndex = 0;
+                resIndex++;
+                if (resIndex >= RESOLUTION_PRESETS.size()) {
+                    currentState = FINISHED;
+                    std::cout << ">>> BENCHMARK VULKAN CONCLUÍDO <<<" << std::endl;
+                    return;
+                }
+            }
+        }
+    }
+    currentState = CONFIGURING;
+}
+
+inline void BenchmarkAutomator::saveBenchmark(float fps, Game* game) {
+    char filename[256];
+    sprintf(filename, "Benchmarks/Vulkan_%.1fAVG_M%d_I%d_S%d_%dp.png",
+        fps, metricIndex, integratorIndex, sceneIndex, RESOLUTION_PRESETS[resIndex].height);
+
+    game->saveScreenshot(filename);
+}
 
 int play()
 {
