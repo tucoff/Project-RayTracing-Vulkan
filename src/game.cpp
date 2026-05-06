@@ -195,7 +195,7 @@ private:
     std::vector<VkBuffer> cameraUniformBuffers;
     std::vector<VkDeviceMemory> cameraUniformBuffersMemory;
     void* cameraBuffersMapped[MAX_FRAMES_IN_FLIGHT]; 
-    glm::vec3 cameraPos = glm::vec3(2.0f, 2.0f, 2.0f);
+    glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, 666.0f);
     glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
     glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
     float cameraSpeed = 2.5f;
@@ -1452,6 +1452,7 @@ private:
         allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT); 
         allocInfo.pSetLayouts = layouts.data();
 
+        descriptorSets.clear();
         descriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
         if (vkAllocateDescriptorSets(device, &allocInfo, descriptorSets.data()) != VK_SUCCESS)
         {
@@ -1880,11 +1881,10 @@ private:
 
     void saveScreenshot(const char* filename) {
         vkDeviceWaitIdle(device);
-        
-        // Cria pasta se não existir
+         
         fs::path filePath(filename);
         fs::create_directories(filePath.parent_path());
-         
+
         VkDeviceSize imageSize = swapChainExtent.width * swapChainExtent.height * 4;
         VkBuffer stagingBuffer;
         VkDeviceMemory stagingBufferMemory;
@@ -1894,41 +1894,56 @@ private:
             stagingBuffer, stagingBufferMemory);
 
         VkCommandBuffer commandBuffer = beginSingleTimeCommand();
-        
-        // Transição para TRANSFER_SRC_OPTIMAL
+         
         VkImageMemoryBarrier preTransferBarrier{};
         preTransferBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        preTransferBarrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        preTransferBarrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
         preTransferBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
         preTransferBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         preTransferBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        preTransferBarrier.image = swapChainImages[currentFrame];
+        preTransferBarrier.image = storageImage; 
         preTransferBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         preTransferBarrier.subresourceRange.baseMipLevel = 0;
         preTransferBarrier.subresourceRange.levelCount = 1;
         preTransferBarrier.subresourceRange.baseArrayLayer = 0;
         preTransferBarrier.subresourceRange.layerCount = 1;
-        preTransferBarrier.srcAccessMask = 0;
+        preTransferBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
         preTransferBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
 
         vkCmdPipelineBarrier(commandBuffer,
-            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
             VK_PIPELINE_STAGE_TRANSFER_BIT,
             0, 0, nullptr, 0, nullptr, 1, &preTransferBarrier);
-         
+
         VkBufferImageCopy region{};
         region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         region.imageSubresource.layerCount = 1;
         region.imageExtent = { swapChainExtent.width, swapChainExtent.height, 1 };
-
-        vkCmdCopyImageToBuffer(commandBuffer, swapChainImages[currentFrame], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+         
+        vkCmdCopyImageToBuffer(commandBuffer, storageImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
             stagingBuffer, 1, &region);
+         
+        VkImageMemoryBarrier postTransferBarrier{};
+        postTransferBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        postTransferBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        postTransferBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+        postTransferBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        postTransferBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        postTransferBarrier.image = storageImage; // Corrigido: Usando a storageImage
+        postTransferBarrier.subresourceRange = preTransferBarrier.subresourceRange;
+        postTransferBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        postTransferBarrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+
+        vkCmdPipelineBarrier(commandBuffer,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            0, 0, nullptr, 0, nullptr, 1, &postTransferBarrier);
 
         endSingleTimeCommand(commandBuffer);
 
         void* data;
         vkMapMemory(device, stagingBufferMemory, 0, imageSize, 0, &data);
-         
+
         if (stbi_write_png(filename, swapChainExtent.width, swapChainExtent.height, 4, (unsigned char*)data, swapChainExtent.width * 4))
         {
             std::cout << "Screenshot salvo: " << filename << std::endl;
@@ -2263,8 +2278,11 @@ private:
         {
             vkDestroyImageView(device, imageView, nullptr);
         }
+        swapChainImageViews.clear();
+        swapChainImages.clear();
 
         vkDestroySwapchainKHR(device, swapChain, nullptr);
+        swapChain = VK_NULL_HANDLE;
 
         if (!descriptorSets.empty())
         {
@@ -2348,9 +2366,6 @@ private:
     }
 
 #pragma endregion
-
-
-
 
 };
 
