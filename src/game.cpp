@@ -212,7 +212,7 @@ private:
     float stepSize = 10.0f;
     int maxSteps = 1000;
     public:int metric = 0; // 0 - Newton || 1 - Schwarzschild || 2 - Kerr
-    float spinSpeed = 1;
+    float spinSpeed = 0.5f;
     int currentScene = 1;
     bool isInputActive = false;
     bool showFPS = false;
@@ -2252,7 +2252,7 @@ private:
     void updateUniformBuffer(uint32_t currentImage)
     { 
         float aspect_ratio = swapChainExtent.width / (float)swapChainExtent.height;
-        float viewport_height = 2.0f;
+        float viewport_height = 1.0f;  // Reduced from 2.0f for 2x zoom effect
         float viewport_width = aspect_ratio * viewport_height;
         float focal_length = 1.0f;
          
