@@ -206,6 +206,8 @@ private:
     float hY = HEIGHT / 2.0f;
     float deltaTime = 0.0f;
     float lastFrame = 0.0f;
+    bool mouseControlEnabled = false;
+    bool ignoreNextMouseMove = false;
     public:bool method = true;
     float stepSize = 10.0f;
     int maxSteps = 1000;
@@ -1646,7 +1648,14 @@ private:
 
     void processMouseMovement(float xpos, float ypos) 
     {
-		if (traceMode) return;
+        if (traceMode || !mouseControlEnabled) return;
+
+        if (ignoreNextMouseMove) {
+            ignoreNextMouseMove = false;
+            hX = xpos;
+            hY = ypos;
+            return;
+        }
 
         if (firstMouse) 
         {
@@ -1704,9 +1713,18 @@ private:
 
         if (glfwGetKey(window, GLFW_KEY_T) == GLFW_PRESS)
         {
-            traceMode = !traceMode;
-            if (!traceMode) glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-			else glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+            if (!mouseControlEnabled)
+            {
+                mouseControlEnabled = true;
+                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+                firstMouse = true;
+            }
+            else
+            {
+                traceMode = !traceMode;
+                if (!traceMode) glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+                else glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+            }
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
 
@@ -1831,6 +1849,16 @@ private:
 
         glfwSetWindowSize(window, resolution.width, resolution.height);
         std::cout << "Resolution changed to: " << resolution.name << " (" << resolution.width << "x" << resolution.height << ")" << std::endl;
+
+        // Reset mouse position to center after resolution change
+        float centerX = resolution.width / 2.0f;
+        float centerY = resolution.height / 2.0f;
+        glfwSetCursorPos(window, centerX, centerY);
+        hX = centerX;
+        hY = centerY;
+        
+        // Ignore the next mouse movement callback to prevent camera jitter
+        ignoreNextMouseMove = true;
 
         framebufferResized = true;
     }
