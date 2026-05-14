@@ -121,19 +121,78 @@ struct CameraUBO {
 
 class Game;
 
+struct CameraPreset {
+    std::string name;
+    glm::vec3 position;
+    float pitch;
+    float yaw;
+};
+
+struct StepSizePreset {
+    std::string name;
+    float value;
+};
+
+struct GravityPreset {
+    std::string name;
+    float value;
+};
+
+struct SpinSpeedPreset {
+    std::string name;
+    float value;
+};
+
 class BenchmarkAutomator {
 public:
-    enum State { CONFIGURING, WARMUP, SAMPLING, SAVING, FINISHED };
-    State currentState = CONFIGURING;
-
     int resIndex = 0;
     int metricIndex = 0;
     int integratorIndex = 0;
     int sceneIndex = 1;
+     
+    int camIndex = 0;
+    int stepIndex = 0;
+    int gravIndex = 0;
+    int spinIndex = 0;
 
     float timer = 0.0f;
     int frameCount = 0;
-    const float SAMPLING_DURATION = 5.0f;
+    bool isFinished = false;
+     
+    const float benchmarkDurationPerConfig = 0.1f;
+     
+    std::vector<StepSizePreset> stepPresets = {
+        {"SmallStep", 1.0f}, {"MediumStep", 52.0f}, {"BigStep", 260.0f}
+    };
+    std::vector<GravityPreset> gravityPresets = {
+        {"NormalG", 1.989e31f}, {"StrongG", 3.978e31f}, {"MuchStrongerG", 5.967e31f}
+    };
+    std::vector<GravityPreset> customScene6Gravities = {
+        {"Grav_1.989e31", 1.989e+31f}, {"Grav_1.989e32", 1.989e+32f},
+        {"Grav_1.989e33", 1.989e+33f}, {"Grav_1.989e34", 1.989e+34f}
+    };
+    std::vector<SpinSpeedPreset> spinPresets = {
+        {"NaturalSpinSpeed", 0.5f}, {"UnaturalSpinSpeed", 10.0f},
+        {"StrongSpinSpeed", 50.0f}, {"FunnySpinSpeed", 200.0f}
+    };
+     
+    std::vector<CameraPreset> defaultCameras = {
+        {"Front", glm::vec3(0.0f, 0.0f, 666.0f), 0.0f, 180.0f},
+        {"Periferic", glm::vec3(-140.0f, 0.0f, -360.0f), 0.0f, 66.0f},
+        {"Above", glm::vec3(0.0f, 180.0f, -150.0f), 90.0f, 0.0f},
+        {"Diagonal", glm::vec3(-70.0f, 70.0f, -400.0f), 15.0f, 15.0f},
+        {"Tangent", glm::vec3(0.0f, 0.0f, -180.0f), 0.0f, 90.0f},
+        {"LookAway", glm::vec3(0.0f, 0.0f, -200.0f), 0.0f, 180.0f}
+    };
+
+    std::vector<CameraPreset> scene6Cameras = {
+        {"CamPos1", glm::vec3(83.0f, -4.0f, 30.0f), 0.0f, 240.0f},
+        {"CamPos2", glm::vec3(100.0f, 0.0f, 235.0f), 0.0f, 170.0f},
+        {"CamPos3", glm::vec3(300.0f, 0.0f, 800.0f), 0.0f, 116.0f},
+        {"CamPos4", glm::vec3(150.0f, -200.0f, -100.0f), -60.0f, -20.0f},
+        {"CamPos5", glm::vec3(125.0f, -2.0f, -30.0f), 1.0f, 25.0f},
+        {"CamPos6", glm::vec3(100.0f, 2.2f, 45.0f), -0.3f, 90.0f}
+    };
 
     void update(float deltaTime, Game* game);
 
@@ -141,12 +200,17 @@ private:
     void applyConfig(Game* game);
     void advance(Game* game);
     void saveBenchmark(float fps, Game* game);
+    void saveToCSV(float fps, const std::string& imagePath);
 };
 
 class Game
 {   
 
 public:
+    glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, 666.0f);
+    float yaw = -90.0f;
+    float pitch = 0.0f;
+
     void run()
     {
         initWindow();
@@ -207,13 +271,10 @@ private:
     std::vector<VkBuffer> cameraUniformBuffers;
     std::vector<VkDeviceMemory> cameraUniformBuffersMemory;
     void* cameraBuffersMapped[MAX_FRAMES_IN_FLIGHT]; 
-    glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, 666.0f);
     glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
     glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
     float cameraSpeed = 2.5f;
     bool firstMouse = true;
-    float yaw = -90.0f;
-    float pitch = 0.0f;
     float hX = WIDTH / 2.0f;
     float hY = HEIGHT / 2.0f;
     float deltaTime = 0.0f;
@@ -856,7 +917,14 @@ private:
     }
 
     VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes)
-    {
+    { 
+        for (const auto& availablePresentMode : availablePresentModes)
+        {
+            if (availablePresentMode == VK_PRESENT_MODE_IMMEDIATE_KHR)
+            {
+                return availablePresentMode;
+            }
+        } 
         for (const auto& availablePresentMode : availablePresentModes)
         {
             if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR)
@@ -864,8 +932,7 @@ private:
                 return availablePresentMode;
             }
         }
-
-        return VK_PRESENT_MODE_FIFO_KHR;
+        return VK_PRESENT_MODE_FIFO_KHR; 
     }
 
     VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities)
@@ -1416,6 +1483,8 @@ private:
             "2k_mars", "2k_jupiter", "2k_saturn", "2k_uranus", "2k_neptune"
         };
 
+        stbi_set_flip_vertically_on_load(true);
+
         for (int planetIdx = 0; planetIdx < 10; planetIdx++) {
             std::string texturePath = "textures/" + planetNames[planetIdx] + ".jpg";
             
@@ -1597,6 +1666,8 @@ private:
                    storageImage, storageImageMemory);
 
         storageImageView = createImageView(storageImage, storageFormat, VK_IMAGE_ASPECT_COLOR_BIT, 1);
+
+        transitionImageLayout(storageImage, storageFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, 1, 1);
     }
 
     #pragma endregion
@@ -2378,7 +2449,7 @@ private:
     void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
     {
         VkCommandBufferBeginInfo beginInfo{};
-        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO; 
 
         if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS)
         {
@@ -2387,7 +2458,7 @@ private:
              
         VkImageMemoryBarrier storageImageBarrier{};
         storageImageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        storageImageBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        storageImageBarrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
         storageImageBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL; 
         storageImageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         storageImageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -2512,7 +2583,7 @@ private:
     void updateUniformBuffer(uint32_t currentImage)
     { 
         float aspect_ratio = swapChainExtent.width / (float)swapChainExtent.height;
-        float viewport_height = 1.0f;  // Reduced from 2.0f for 2x zoom effect
+        float viewport_height = 1.0f;
         float viewport_width = aspect_ratio * viewport_height;
         float focal_length = 1.0f;
          
@@ -2539,33 +2610,29 @@ private:
         ubo.current_scene = currentScene;
         ubo.gravity_multiplier = gravityMultiplier;
 
-        // Initialize all bodies with zero mass by default
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 10; i++) 
+        {
             ubo.bodies[i] = glm::vec4(0.0f);
             ubo.bodyMasses[i] = glm::vec4(0.0f);
         }
 
-        if (currentScene == 6) {
-            // Solar System Scene with 10 bodies
-            // [0] Sun, [1] Mercury, [2] Venus, [3] Earth, [4] Moon, [5] Mars, [6] Jupiter, [7] Saturn, [8] Uranus, [9] Neptune
-            
-            float systemTime = static_cast<float>(glfwGetTime()) * 0.1f; // Slow down orbital motion
+        if (currentScene == 6) 
+        {
+            float systemTime = static_cast<float>(glfwGetTime()) * 0.0f;
             float baseRadii[] = { 5.0f, 0.3f, 0.7f, 0.8f, 0.2f, 0.4f, 2.5f, 2.0f, 1.5f, 1.4f };
             float orbitDistances[] = { 0.0f, 10.0f, 18.0f, 28.0f, 2.5f, 40.0f, 65.0f, 95.0f, 125.0f, 150.0f };
-            float orbitSpeeds[] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };// { 0.0f, 4.1f, 1.6f, 1.0f, 13.3f, 0.5f, 0.08f, 0.03f, 0.01f, 0.005f };
+            float orbitSpeeds[] = { 0.0f, 4.1f, 1.6f, 1.0f, 13.3f, 0.5f, 0.08f, 0.03f, 0.01f, 0.005f };
             float massPercents[] = { 1.0f, 0.005f, 0.008f, 0.01f, 0.001f, 0.005f, 0.1f, 0.08f, 0.04f, 0.03f };
 
             glm::vec3 sunPos(0.0f, 0.0f, -150.0f);
-            float baseMass = 1.989e30f; // Solar mass in kg
+            float baseMass = 1.989e30f;
 
             for (int i = 0; i < 10; i++) {
                 glm::vec3 bodyPos;
                 
-                if (i == 0) {
-                    // Sun at origin
+                if (i == 0) { 
                     bodyPos = sunPos;
-                } else if (i == 4) {
-                    // Moon orbits Earth
+                } else if (i == 4) { 
                     float earthX = sunPos.x + cos(systemTime * orbitSpeeds[3]) * orbitDistances[3];
                     float earthZ = sunPos.z + sin(systemTime * orbitSpeeds[3]) * orbitDistances[3];
                     glm::vec3 earthPos(earthX, 0.0f, earthZ);
@@ -2573,8 +2640,7 @@ private:
                     bodyPos.x = earthPos.x + cos(systemTime * orbitSpeeds[i]) * orbitDistances[i];
                     bodyPos.y = earthPos.y;
                     bodyPos.z = earthPos.z + sin(systemTime * orbitSpeeds[i]) * orbitDistances[i];
-                } else {
-                    // Planets orbit the sun
+                } else { 
                     bodyPos.x = sunPos.x + cos(systemTime * orbitSpeeds[i]) * orbitDistances[i];
                     bodyPos.y = sunPos.y;
                     bodyPos.z = sunPos.z + sin(systemTime * orbitSpeeds[i]) * orbitDistances[i];
@@ -2731,38 +2797,26 @@ private:
 
 #pragma endregion
 
-};
+};  
 
 inline void BenchmarkAutomator::update(float deltaTime, Game* game) {
-    if (currentState == FINISHED) return;
+    if (isFinished) return;
+
+    if (timer == 0.0f && frameCount == 0) {
+        applyConfig(game);
+    }
 
     timer += deltaTime;
+    frameCount++;
 
-    switch (currentState) {
-    case CONFIGURING:
-        applyConfig(game);
-        timer = 0;
-        currentState = WARMUP;
-        break;
+    if (timer >= benchmarkDurationPerConfig) {
+        float avgFps = frameCount / timer;
 
-    case WARMUP:
-        if (timer >= 1.0f) {
-            timer = 0;
-            frameCount = 0;
-            currentState = SAMPLING;
-            std::cout << "Iniciando Amostragem: Res=" << RESOLUTION_PRESETS[resIndex].name
-                << " Metric=" << metricIndex << " Scene=" << sceneIndex << std::endl;
-        }
-        break;
+        saveBenchmark(avgFps, game);
+        advance(game);
 
-    case SAMPLING:
-        frameCount++;
-        if (timer >= SAMPLING_DURATION) {
-            float avgFps = frameCount / timer;
-            saveBenchmark(avgFps, game);
-            advance(game);
-        }
-        break;
+        timer = 0.0f;
+        frameCount = 0;
     }
 }
 
@@ -2771,36 +2825,145 @@ inline void BenchmarkAutomator::applyConfig(Game* game) {
     game->metric = metricIndex;
     game->method = (integratorIndex == 0);
     game->currentScene = sceneIndex;
+
+    CameraPreset camPreset = (sceneIndex == 6) ? scene6Cameras[camIndex] : defaultCameras[camIndex];
+    StepSizePreset step = stepPresets[stepIndex];
+    GravityPreset grav = (sceneIndex == 6) ? customScene6Gravities[gravIndex] : gravityPresets[gravIndex];
+    SpinSpeedPreset spin = spinPresets[spinIndex];
+
+    game->cameraPos = camPreset.position;
+    game->pitch = camPreset.pitch;
+    game->yaw = camPreset.yaw;
+
+    glm::vec3 front;
+    front.x = cos(glm::radians(game->yaw)) * cos(glm::radians(game->pitch));
+    front.y = sin(glm::radians(game->pitch));
+    front.z = sin(glm::radians(game->yaw)) * cos(glm::radians(game->pitch));
+    game->cameraFront = glm::normalize(front);
+
+    game->stepSize = step.value;
+
+    game->gravityMultiplier = grav.value / (1.989e31f);
+    game->spinSpeed = spin.value;
 }
 
 inline void BenchmarkAutomator::advance(Game* game) {
-    sceneIndex++;
-    if (sceneIndex > 5) {
-        sceneIndex = 1;
-        integratorIndex++;
-        if (integratorIndex > 1) {
-            integratorIndex = 0;
-            metricIndex++;
-            if (metricIndex > 2) {
-                metricIndex = 0;
-                resIndex++;
-                if (resIndex >= RESOLUTION_PRESETS.size()) {
-                    currentState = FINISHED;
-                    std::cout << ">>> BENCHMARK VULKAN CONCLUÍDO <<<" << std::endl;
-                    return;
+    spinIndex++;
+
+    int maxSpinIdx = (metricIndex == 2 /* Kerr */) ? spinPresets.size() : 1;
+    if (spinIndex >= maxSpinIdx) {
+        spinIndex = 0;
+        gravIndex++;
+
+        int maxGravIdx = (sceneIndex == 6) ? customScene6Gravities.size() : gravityPresets.size();
+        if (gravIndex >= maxGravIdx) {
+            gravIndex = 0;
+            stepIndex++;
+
+            int maxStepIdx = (integratorIndex == 1 /* RK4 */) ? 1 : stepPresets.size();
+            if (stepIndex >= maxStepIdx) {
+                stepIndex = 0;
+                camIndex++;
+
+                int maxCamIdx = (sceneIndex == 6) ? scene6Cameras.size() : defaultCameras.size();
+                if (camIndex >= maxCamIdx) {
+                    camIndex = 0;
+                    sceneIndex++;
+
+                    if (sceneIndex > 6) {
+                        sceneIndex = 1;
+                        integratorIndex++;
+
+                        if (integratorIndex > 1) {
+                            integratorIndex = 0;
+                            metricIndex++;
+
+                            if (metricIndex > 2) {
+                                metricIndex = 0;
+                                resIndex++;
+
+                                if (resIndex >= RESOLUTION_PRESETS.size()) {
+                                    isFinished = true;
+                                    std::cout << ">>> BENCHMARK VULKAN CONCLUÍDO <<<" << std::endl;
+                                    return;
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
     }
-    currentState = CONFIGURING;
 }
 
 inline void BenchmarkAutomator::saveBenchmark(float fps, Game* game) {
-    char filename[256];
-    sprintf(filename, "Benchmarks/Vulkan_%.1fAVG_M%d_I%d_S%d_%dp.png",
-        fps, metricIndex, integratorIndex, sceneIndex, RESOLUTION_PRESETS[resIndex].height);
+    CameraPreset camPreset = (sceneIndex == 6) ? scene6Cameras[camIndex] : defaultCameras[camIndex];
+    StepSizePreset step = stepPresets[stepIndex];
+    GravityPreset grav = (sceneIndex == 6) ? customScene6Gravities[gravIndex] : gravityPresets[gravIndex];
+    SpinSpeedPreset spin = spinPresets[spinIndex];
+
+    std::string metricName = (metricIndex == 0) ? "Newton" : (metricIndex == 1) ? "Schwarzschild" : "Kerr";
+    std::string integratorName = (integratorIndex == 0) ? "Euler" : "RK4";
+
+    char filename[512];
+    // Formatted exactly like Unity: {avgFps}FPS_{metric}_{integrator}_S{sceneId}_{camera}_{step}_{grav}_{spin}_{h}p.png
+    sprintf(filename, "Benchmarks/%.1fFPS_%s_%s_S%d_%s_%s_%s_%s_%dp.png",
+        fps, metricName.c_str(), integratorName.c_str(), sceneIndex,
+        camPreset.name.c_str(), step.name.c_str(), grav.name.c_str(), spin.name.c_str(),
+        RESOLUTION_PRESETS[resIndex].height);
 
     game->saveScreenshot(filename);
+    saveToCSV(fps, filename);
+}
+
+inline void BenchmarkAutomator::saveToCSV(float fps, const std::string& imagePath) {
+    CameraPreset camPreset = (sceneIndex == 6) ? scene6Cameras[camIndex] : defaultCameras[camIndex];
+    StepSizePreset step = stepPresets[stepIndex];
+    GravityPreset grav = (sceneIndex == 6) ? customScene6Gravities[gravIndex] : gravityPresets[gravIndex];
+    SpinSpeedPreset spin = spinPresets[spinIndex];
+
+    std::string csvPath = "Benchmarks/TCCBenchmark.csv";
+    bool fileExists = fs::exists(csvPath);
+
+    std::ofstream csvFile;
+    csvFile.open(csvPath, std::ios_base::app);
+
+    if (!fileExists) {
+        csvFile << "Timestamp,Application_Type,Resolution,Resolution_W,Resolution_H,Metric,Integrator,Scene_ID,"
+            << "Camera_Name,Camera_Position_X,Camera_Position_Y,Camera_Position_Z,"
+            << "Camera_Rotation_X,Camera_Rotation_Y,Camera_Rotation_Z,"
+            << "Step_Size,Step_Name,Gravity_Value,Gravity_Name,Spin_Speed,Spin_Name,"
+            << "Average_FPS,Frame_Count,Duration_Seconds,Image_Path\n";
+    }
+
+    std::string metricName = (metricIndex == 0) ? "Newton" : (metricIndex == 1) ? "Schwarzschild" : "Kerr";
+    std::string integratorName = (integratorIndex == 0) ? "Euler" : "RK4";
+
+    auto t = std::time(nullptr);
+    auto tm = *std::localtime(&t);
+    csvFile << std::put_time(&tm, "%Y-%m-%d_%H-%M-%S") << ","
+        << "Vulkan,"
+        << RESOLUTION_PRESETS[resIndex].height << "p,"
+        << RESOLUTION_PRESETS[resIndex].width << ","
+        << RESOLUTION_PRESETS[resIndex].height << ","
+        << metricName << ","
+        << integratorName << ","
+        << sceneIndex << ","
+        << camPreset.name << ","
+        << std::fixed << std::setprecision(2) << camPreset.position.x << "," << camPreset.position.y << "," << camPreset.position.z << ","
+        << camPreset.pitch << "," << camPreset.yaw << ",0.00," // Pitch maps to X rot, Yaw maps to Y rot
+        << step.value << ","
+        << step.name << ","
+        << std::scientific << std::setprecision(2) << grav.value << ","
+        << grav.name << ","
+        << std::fixed << std::setprecision(2) << spin.value << ","
+        << spin.name << ","
+        << fps << ","
+        << frameCount << ","
+        << benchmarkDurationPerConfig << ","
+        << imagePath << "\n";
+
+    csvFile.close();
 }
 
 int play()
