@@ -112,6 +112,9 @@ struct CameraUBO {
     alignas(4) int metric;
     alignas(4) float spin_speed;
     alignas(4) int current_scene;
+    alignas(4) float gravity_multiplier;
+    alignas(16) glm::vec4 bodies[10];      // xyz = position, w = radius
+    alignas(16) glm::vec4 bodyMasses[10];  // x = mass (vec4 used to respect std140 alignment rules)
 };
 
 #pragma endregion
@@ -175,6 +178,15 @@ private:
     VkDeviceMemory textureImageMemory = VK_NULL_HANDLE;
     VkImageView textureImageView = VK_NULL_HANDLE;
     VkSampler textureSampler = VK_NULL_HANDLE; 
+    
+    VkImage milkyWayImage = VK_NULL_HANDLE;
+    VkDeviceMemory milkyWayImageMemory = VK_NULL_HANDLE;
+    VkImageView milkyWayImageView = VK_NULL_HANDLE;
+    
+    std::array<VkImage, 10> planetImages = {};
+    std::array<VkDeviceMemory, 10> planetImageMemories = {};
+    std::array<VkImageView, 10> planetImageViews = {};
+    
     VkImage storageImage = VK_NULL_HANDLE;
     VkDeviceMemory storageImageMemory = VK_NULL_HANDLE;
     VkImageView storageImageView = VK_NULL_HANDLE;
@@ -222,6 +234,7 @@ private:
     uint32_t currentResolutionIndex = 0;
     uint32_t currentWindowWidth = WIDTH;
     uint32_t currentWindowHeight = HEIGHT;
+    float gravityMultiplier = 1.0f;  // Used for Scene 6 Solar System
 
 #pragma endregion
 
@@ -275,6 +288,8 @@ private:
         createCommandPool();
         createUniformBuffers();
         createTextureImage();
+        createMilkyWayTexture();
+        createPlanetTextures();
         createTextureImageView();
         createTextureSampler();
         createStorageImage();
@@ -1310,6 +1325,162 @@ private:
 
     #pragma endregion
 
+    #pragma region CreateMilkyWayTexture()
+    void createMilkyWayTexture()
+    {
+        std::vector<std::string> milkyWayFaces = {
+            "textures/_px.png", "textures/_nx.png",
+            "textures/_py.png", "textures/_ny.png",
+            "textures/_pz.png", "textures/_nz.png"
+        };
+
+        int texWidth, texHeight, texChannels;
+        stbi_uc* dummy = stbi_load(milkyWayFaces[0].c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+        
+        if (!dummy) {
+            std::cerr << "Warning: Milky Way texture not found, skipping..." << std::endl;
+            return;
+        }
+        stbi_image_free(dummy);
+
+        VkDeviceSize layerSize = texWidth * texHeight * 4;
+        VkDeviceSize imageSize = layerSize * 6;
+
+        VkBuffer stagingBuffer;
+        VkDeviceMemory stagingBufferMemory;
+        createBuffer(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
+
+        void* data;
+        vkMapMemory(device, stagingBufferMemory, 0, imageSize, 0, &data);
+
+        for (int i = 0; i < 6; i++) {
+            stbi_uc* pixels = stbi_load(milkyWayFaces[i].c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+            if (!pixels) {
+                std::cerr << "Warning: failed to load milky way face: " << milkyWayFaces[i] << std::endl;
+                vkUnmapMemory(device, stagingBufferMemory);
+                vkDestroyBuffer(device, stagingBuffer, nullptr);
+                vkFreeMemory(device, stagingBufferMemory, nullptr);
+                return;
+            }
+            memcpy(static_cast<stbi_uc*>(data) + (layerSize * i), pixels, static_cast<size_t>(layerSize));
+            stbi_image_free(pixels);
+        }
+        vkUnmapMemory(device, stagingBufferMemory);
+
+        VkImageCreateInfo imageInfo{};
+        imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        imageInfo.imageType = VK_IMAGE_TYPE_2D;
+        imageInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
+        imageInfo.extent.width = texWidth;
+        imageInfo.extent.height = texHeight;
+        imageInfo.extent.depth = 1;
+        imageInfo.mipLevels = 1;
+        imageInfo.arrayLayers = 6;
+        imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+        imageInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        imageInfo.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+
+        if (vkCreateImage(device, &imageInfo, nullptr, &milkyWayImage) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create milky way cubemap image!");
+        }
+
+        VkMemoryRequirements memRequirements;
+        vkGetImageMemoryRequirements(device, milkyWayImage, &memRequirements);
+        VkMemoryAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize = memRequirements.size;
+        allocInfo.memoryTypeIndex = findMemoryTypeIndex(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        
+        if (vkAllocateMemory(device, &allocInfo, nullptr, &milkyWayImageMemory) != VK_SUCCESS) {
+            throw std::runtime_error("failed to allocate milky way cubemap memory!");
+        }
+        vkBindImageMemory(device, milkyWayImage, milkyWayImageMemory, 0);
+
+        transitionImageLayout(milkyWayImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, 6);
+        copyBufferToImageCubemap(stagingBuffer, milkyWayImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
+        transitionImageLayout(milkyWayImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 1, 6);
+
+        vkDestroyBuffer(device, stagingBuffer, nullptr);
+        vkFreeMemory(device, stagingBufferMemory, nullptr);
+    }
+    #pragma endregion
+
+    #pragma region CreatePlanetTextures()
+    void createPlanetTextures()
+    {
+        std::array<std::string, 10> planetNames = {
+            "2k_sun", "2k_mercury", "2k_venus", "2k_earth", "2k_moon",
+            "2k_mars", "2k_jupiter", "2k_saturn", "2k_uranus", "2k_neptune"
+        };
+
+        for (int planetIdx = 0; planetIdx < 10; planetIdx++) {
+            std::string texturePath = "textures/" + planetNames[planetIdx] + ".jpg";
+            
+            int texWidth, texHeight, texChannels;
+            stbi_uc* pixels = stbi_load(texturePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+            
+            if (!pixels) {
+                std::cerr << "Warning: failed to load planet texture: " << texturePath << std::endl;
+                texWidth = 1;
+                texHeight = 1;
+                pixels = new stbi_uc[4]{255, 255, 255, 255};
+            }
+
+            VkDeviceSize imageSize = texWidth * texHeight * 4;
+            VkBuffer stagingBuffer;
+            VkDeviceMemory stagingBufferMemory;
+            createBuffer(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
+
+            void* data;
+            vkMapMemory(device, stagingBufferMemory, 0, imageSize, 0, &data);
+            memcpy(data, pixels, static_cast<size_t>(imageSize));
+            vkUnmapMemory(device, stagingBufferMemory);
+
+            VkImageCreateInfo imageInfo{};
+            imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+            imageInfo.imageType = VK_IMAGE_TYPE_2D;
+            imageInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
+            imageInfo.extent.width = texWidth;
+            imageInfo.extent.height = texHeight;
+            imageInfo.extent.depth = 1;
+            imageInfo.mipLevels = 1;
+            imageInfo.arrayLayers = 1;
+            imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+            imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+            imageInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+            imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+            imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+            if (vkCreateImage(device, &imageInfo, nullptr, &planetImages[planetIdx]) != VK_SUCCESS) {
+                throw std::runtime_error("failed to create planet image!");
+            }
+
+            VkMemoryRequirements memRequirements;
+            vkGetImageMemoryRequirements(device, planetImages[planetIdx], &memRequirements);
+            VkMemoryAllocateInfo allocInfo{};
+            allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+            allocInfo.allocationSize = memRequirements.size;
+            allocInfo.memoryTypeIndex = findMemoryTypeIndex(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+            
+            if (vkAllocateMemory(device, &allocInfo, nullptr, &planetImageMemories[planetIdx]) != VK_SUCCESS) {
+                throw std::runtime_error("failed to allocate planet image memory!");
+            }
+            vkBindImageMemory(device, planetImages[planetIdx], planetImageMemories[planetIdx], 0);
+
+            transitionImageLayout(planetImages[planetIdx], VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, 1);
+            copyBufferToImage(stagingBuffer, planetImages[planetIdx], static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
+            transitionImageLayout(planetImages[planetIdx], VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 1, 1);
+
+            vkDestroyBuffer(device, stagingBuffer, nullptr);
+            vkFreeMemory(device, stagingBufferMemory, nullptr);
+            stbi_image_free(pixels);
+        }
+    }
+    #pragma endregion
+
     #pragma region CreateTextureImageView()
     void createTextureImageView()
     {
@@ -1331,6 +1502,55 @@ private:
         if (vkCreateImageView(device, &viewInfo, nullptr, &textureImageView) != VK_SUCCESS)
         {
             throw std::runtime_error("failed to create cubemap image view!");
+        }
+
+        if (milkyWayImage != VK_NULL_HANDLE)
+        {
+            VkImageViewCreateInfo milkyWayViewInfo{};
+            milkyWayViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            milkyWayViewInfo.image = milkyWayImage;
+            milkyWayViewInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
+            milkyWayViewInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
+            milkyWayViewInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+            milkyWayViewInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+            milkyWayViewInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+            milkyWayViewInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+            milkyWayViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            milkyWayViewInfo.subresourceRange.baseMipLevel = 0;
+            milkyWayViewInfo.subresourceRange.levelCount = 1;
+            milkyWayViewInfo.subresourceRange.baseArrayLayer = 0;
+            milkyWayViewInfo.subresourceRange.layerCount = 6;
+
+            if (vkCreateImageView(device, &milkyWayViewInfo, nullptr, &milkyWayImageView) != VK_SUCCESS)
+            {
+                throw std::runtime_error("failed to create milky way image view!");
+            }
+        }
+
+        for (int i = 0; i < 10; i++)
+        {
+            if (planetImages[i] != VK_NULL_HANDLE)
+            {
+                VkImageViewCreateInfo planetViewInfo{};
+                planetViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+                planetViewInfo.image = planetImages[i];
+                planetViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+                planetViewInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
+                planetViewInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+                planetViewInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+                planetViewInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+                planetViewInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+                planetViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                planetViewInfo.subresourceRange.baseMipLevel = 0;
+                planetViewInfo.subresourceRange.levelCount = 1;
+                planetViewInfo.subresourceRange.baseArrayLayer = 0;
+                planetViewInfo.subresourceRange.layerCount = 1;
+
+                if (vkCreateImageView(device, &planetViewInfo, nullptr, &planetImageViews[i]) != VK_SUCCESS)
+                {
+                    throw std::runtime_error("failed to create planet image view!");
+                }
+            }
         }
     }
 
@@ -1405,7 +1625,21 @@ private:
         skyboxLayoutBinding.pImmutableSamplers = nullptr;
         skyboxLayoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
-        std::array<VkDescriptorSetLayoutBinding, 3> bindings = {storageImageLayoutBinding, uniformBufferLayoutBinding, skyboxLayoutBinding};
+        VkDescriptorSetLayoutBinding milkyWayLayoutBinding{};
+        milkyWayLayoutBinding.binding = 3;
+        milkyWayLayoutBinding.descriptorCount = 1;
+        milkyWayLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        milkyWayLayoutBinding.pImmutableSamplers = nullptr;
+        milkyWayLayoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+        VkDescriptorSetLayoutBinding planetTexsLayoutBinding{};
+        planetTexsLayoutBinding.binding = 4;
+        planetTexsLayoutBinding.descriptorCount = 10;
+        planetTexsLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        planetTexsLayoutBinding.pImmutableSamplers = nullptr;
+        planetTexsLayoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+        std::array<VkDescriptorSetLayoutBinding, 5> bindings = {storageImageLayoutBinding, uniformBufferLayoutBinding, skyboxLayoutBinding, milkyWayLayoutBinding, planetTexsLayoutBinding};
         VkDescriptorSetLayoutCreateInfo layoutInfo{};
         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
@@ -1428,7 +1662,7 @@ private:
         poolSizes[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
 
         poolSizes[2].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        poolSizes[2].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+        poolSizes[2].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT * 12);
 
         VkDescriptorPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -1475,19 +1709,31 @@ private:
             VkDescriptorImageInfo skyboxInfo{};
             skyboxInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             skyboxInfo.imageView = textureImageView;
-            skyboxInfo.sampler = textureSampler;
-
-            std::array<VkWriteDescriptorSet, 3> descriptorWrites{};
+            skyboxInfo.sampler = textureSampler; 
              
+            VkDescriptorImageInfo milkyWayInfo{};
+            milkyWayInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            milkyWayInfo.imageView = milkyWayImageView;
+            milkyWayInfo.sampler = textureSampler;
+             
+            std::array<VkDescriptorImageInfo, 10> planetInfos{};
+            for (int j = 0; j < 10; j++) {
+                planetInfos[j].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                planetInfos[j].imageView = planetImageViews[j];
+                planetInfos[j].sampler = textureSampler;
+            }
+             
+            std::array<VkWriteDescriptorSet, 5> descriptorWrites{};
+
             descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            descriptorWrites[0].dstSet = descriptorSets[i]; 
+            descriptorWrites[0].dstSet = descriptorSets[i];
             descriptorWrites[0].dstBinding = 0;
             descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
             descriptorWrites[0].descriptorCount = 1;
             descriptorWrites[0].pImageInfo = &imageInfo;
-             
+
             descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            descriptorWrites[1].dstSet = descriptorSets[i]; 
+            descriptorWrites[1].dstSet = descriptorSets[i];
             descriptorWrites[1].dstBinding = 1;
             descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
             descriptorWrites[1].descriptorCount = 1;
@@ -1499,6 +1745,20 @@ private:
             descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             descriptorWrites[2].descriptorCount = 1;
             descriptorWrites[2].pImageInfo = &skyboxInfo;
+             
+            descriptorWrites[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWrites[3].dstSet = descriptorSets[i];
+            descriptorWrites[3].dstBinding = 3;
+            descriptorWrites[3].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            descriptorWrites[3].descriptorCount = 1;
+            descriptorWrites[3].pImageInfo = &milkyWayInfo;
+             
+            descriptorWrites[4].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWrites[4].dstSet = descriptorSets[i];
+            descriptorWrites[4].dstBinding = 4;
+            descriptorWrites[4].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            descriptorWrites[4].descriptorCount = 10;
+            descriptorWrites[4].pImageInfo = planetInfos.data();
 
             vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
         }
@@ -2277,6 +2537,53 @@ private:
         ubo.metric = metric;
         ubo.spin_speed = spinSpeed;
         ubo.current_scene = currentScene;
+        ubo.gravity_multiplier = gravityMultiplier;
+
+        // Initialize all bodies with zero mass by default
+        for (int i = 0; i < 10; i++) {
+            ubo.bodies[i] = glm::vec4(0.0f);
+            ubo.bodyMasses[i] = glm::vec4(0.0f);
+        }
+
+        if (currentScene == 6) {
+            // Solar System Scene with 10 bodies
+            // [0] Sun, [1] Mercury, [2] Venus, [3] Earth, [4] Moon, [5] Mars, [6] Jupiter, [7] Saturn, [8] Uranus, [9] Neptune
+            
+            float systemTime = static_cast<float>(glfwGetTime()) * 0.1f; // Slow down orbital motion
+            float baseRadii[] = { 5.0f, 0.3f, 0.7f, 0.8f, 0.2f, 0.4f, 2.5f, 2.0f, 1.5f, 1.4f };
+            float orbitDistances[] = { 0.0f, 10.0f, 18.0f, 28.0f, 2.5f, 40.0f, 65.0f, 95.0f, 125.0f, 150.0f };
+            float orbitSpeeds[] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };// { 0.0f, 4.1f, 1.6f, 1.0f, 13.3f, 0.5f, 0.08f, 0.03f, 0.01f, 0.005f };
+            float massPercents[] = { 1.0f, 0.005f, 0.008f, 0.01f, 0.001f, 0.005f, 0.1f, 0.08f, 0.04f, 0.03f };
+
+            glm::vec3 sunPos(0.0f, 0.0f, -150.0f);
+            float baseMass = 1.989e30f; // Solar mass in kg
+
+            for (int i = 0; i < 10; i++) {
+                glm::vec3 bodyPos;
+                
+                if (i == 0) {
+                    // Sun at origin
+                    bodyPos = sunPos;
+                } else if (i == 4) {
+                    // Moon orbits Earth
+                    float earthX = sunPos.x + cos(systemTime * orbitSpeeds[3]) * orbitDistances[3];
+                    float earthZ = sunPos.z + sin(systemTime * orbitSpeeds[3]) * orbitDistances[3];
+                    glm::vec3 earthPos(earthX, 0.0f, earthZ);
+                    
+                    bodyPos.x = earthPos.x + cos(systemTime * orbitSpeeds[i]) * orbitDistances[i];
+                    bodyPos.y = earthPos.y;
+                    bodyPos.z = earthPos.z + sin(systemTime * orbitSpeeds[i]) * orbitDistances[i];
+                } else {
+                    // Planets orbit the sun
+                    bodyPos.x = sunPos.x + cos(systemTime * orbitSpeeds[i]) * orbitDistances[i];
+                    bodyPos.y = sunPos.y;
+                    bodyPos.z = sunPos.z + sin(systemTime * orbitSpeeds[i]) * orbitDistances[i];
+                }
+
+                ubo.bodies[i] = glm::vec4(bodyPos, baseRadii[i]);
+                ubo.bodyMasses[i] = glm::vec4(baseMass * massPercents[i], 0.0f, 0.0f, 0.0f);
+            }
+        }
          
         memcpy(cameraBuffersMapped[currentImage], &ubo, sizeof(ubo));
     }
@@ -2377,6 +2684,35 @@ private:
         {
             vkDestroyBuffer(device, cameraUniformBuffers[i], nullptr);
             vkFreeMemory(device, cameraUniformBuffersMemory[i], nullptr);
+        }
+         
+        if (milkyWayImageView != VK_NULL_HANDLE) 
+        {
+            vkDestroyImageView(device, milkyWayImageView, nullptr);
+        }
+        if (milkyWayImage != VK_NULL_HANDLE) 
+        {
+            vkDestroyImage(device, milkyWayImage, nullptr);
+        }
+        if (milkyWayImageMemory != VK_NULL_HANDLE) 
+        {
+            vkFreeMemory(device, milkyWayImageMemory, nullptr);
+        }
+         
+        for (int i = 0; i < 10; i++) 
+        {
+            if (planetImageViews[i] != VK_NULL_HANDLE) 
+            {
+                vkDestroyImageView(device, planetImageViews[i], nullptr);
+            }
+            if (planetImages[i] != VK_NULL_HANDLE) 
+            {
+                vkDestroyImage(device, planetImages[i], nullptr);
+            }
+            if (planetImageMemories[i] != VK_NULL_HANDLE) 
+            {
+                vkFreeMemory(device, planetImageMemories[i], nullptr);
+            }
         }
 
         vkDestroyDevice(device, nullptr);

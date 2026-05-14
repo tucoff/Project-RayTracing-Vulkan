@@ -1,4 +1,6 @@
 #version 450
+#extension GL_EXT_nonuniform_qualifier : enable
+
 layout(local_size_x = 16, local_size_y = 16) in;
 
 layout(binding = 0, rgba8) uniform writeonly image2D storageImage;
@@ -15,10 +17,15 @@ layout(binding = 1) uniform CameraUBO
     int max_steps;
     int metric;
     float spin_speed;
-    int current_scene; 
+    int current_scene;
+    float gravity_multiplier;
+    vec4 bodies[10];      // xyz = pos, w = radius
+    vec4 bodyMasses[10];  // x = mass
 } cam;
  
 layout(binding = 2) uniform samplerCube skyboxSampler;
+layout(binding = 3) uniform samplerCube milkyWaySampler;
+layout(binding = 4) uniform sampler2D planetTexs[10];
 
 struct SceneConfig {
     vec3 spherePos;
@@ -42,6 +49,7 @@ struct HitResult
     bool didHit;
     float dst;
     vec3 color;
+    int bodyIndex;
 };
  
 const float G_REAL = 6.67430e-11;
@@ -91,10 +99,7 @@ SceneConfig load_scene_config() {
         config.sphere2Mass = MASS;
         config.useUniverseSkybox = true;
     } else if (cam.current_scene == 6) {
-        config.sphereRadius = RS_KM * 2.0;
-        config.sphereMass = MASS * 2.0;
-        config.sphere2Pos = vec3(15.0, 0.0, -100.0);
-        config.sphere2Radius = RS_KM * 0.5;
+        // Solar System scene - bodies are handled separately
         config.useUniverseSkybox = true;
     }
     return config;
@@ -134,11 +139,54 @@ bool hit_ring(vec3 center, vec3 normal, float inner_radius, float outer_radius, 
     return false;
 }
 
+vec2 get_spherical_uv(vec3 normal) {
+    float u = atan(normal.z, normal.x) / (2.0 * 3.14159265) + 0.5;
+    float v = asin(normal.y) / 3.14159265 + 0.5;
+    return vec2(u, v);
+}
+
 HitResult calculate_ray_collision(Ray r, SceneConfig scene) {
     HitResult closestHit;
     closestHit.didHit = false;
-    closestHit.dst = 1e10; 
+    closestHit.dst = 1e10;
+    closestHit.bodyIndex = -1;
 
+    // Handle Scene 6 (Solar System)
+    if (cam.current_scene == 6) {
+        for (int i = 0; i < 10; i++) {
+            if (cam.bodyMasses[i].x <= 0.0) continue;
+            
+            float t_sphere = 1e10;
+            if (hit_sphere(cam.bodies[i].xyz, cam.bodies[i].w, r, t_sphere)) {
+                if (t_sphere < closestHit.dst) {
+                    closestHit.didHit = true;
+                    closestHit.dst = t_sphere;
+                    closestHit.bodyIndex = i;
+                    vec3 hitPoint = r.origin + r.direction * t_sphere;
+                    vec3 normal = normalize(hitPoint - cam.bodies[i].xyz);
+                    vec2 uv = get_spherical_uv(normal);
+                    
+                    closestHit.color = texture(planetTexs[i], uv).rgb;
+                }
+            }
+        }
+        // Saturn's rings (body 7)
+        if (cam.bodies[7].w > 0.0) {
+            float t_ring = 1e10;
+            float ringInner = cam.bodies[7].w * 1.5;
+            float ringOuter = cam.bodies[7].w * 2.5;
+            if (hit_ring(cam.bodies[7].xyz, RING_NORMAL, ringInner, ringOuter, r, t_ring)) {
+                if (t_ring < closestHit.dst) {
+                    closestHit.didHit = true;
+                    closestHit.dst = t_ring;
+                    closestHit.color = vec3(0.8, 0.7, 0.5);
+                }
+            }
+        }
+        return closestHit;
+    }
+
+    // Handle Scenes 1-5 (original logic)
     float t_sphere = 1e10;
      
     if (hit_sphere(scene.spherePos, scene.sphereRadius, r, t_sphere)) {
@@ -165,9 +213,51 @@ HitResult calculate_ray_collision(Ray r, SceneConfig scene) {
         }
     }
     return closestHit;
-} 
+}
  
 vec3 get_gravity_accel(vec3 pos, vec3 v, SceneConfig scene) {
+    vec3 accel = vec3(0.0);
+
+    // Handle Scene 6 (Solar System with 10 bodies)
+    if (cam.current_scene == 6) {
+        float spinMults[10] = float[](0.039, 0.017, -0.004, 1.0, 0.036, 0.97, 2.44, 2.22, -1.39, 1.49);
+        
+        for (int i = 0; i < 10; i++) {
+            if (cam.bodyMasses[i].x <= 0.0) continue;
+            
+            vec3 toBody = cam.bodies[i].xyz - pos;
+            float r_dist = length(toBody);
+            if (r_dist < 0.0001) continue;
+
+            float rs_km = (2.0 * G_REAL * cam.bodyMasses[i].x * cam.gravity_multiplier) / (C_REAL * C_REAL) / 1000.0;
+            float r_dist2 = r_dist * r_dist;
+            float r_dist3 = r_dist2 * r_dist;
+            float r_dist5 = r_dist3 * r_dist2;
+
+            if (cam.metric == 0) {
+                // Newtonian gravity
+                accel += toBody * (rs_km * 0.5) / r_dist3;
+            } else if (cam.metric == 1) {
+                // Schwarzschild metric
+                vec3 h = cross(-toBody, v);
+                accel += toBody * (1.5 * rs_km * dot(h, h)) / r_dist5;
+            } else {
+                // Kerr metric with frame dragging
+                vec3 r_vec = -toBody;
+                vec3 h = cross(r_vec, v);
+                vec3 a_schwarzschild = -r_vec * (1.5 * rs_km * dot(h, h)) / r_dist5;
+                
+                float currentSpin = cam.spin_speed * spinMults[i];
+                vec3 spin_vec = KERR_SPIN_AXIS * rs_km * currentSpin;
+                vec3 H = (2.0 / r_dist5) * (3.0 * r_vec * dot(spin_vec, r_vec) - spin_vec * r_dist2);
+                vec3 a_frame_drag = -cross(v, H);
+                accel += a_schwarzschild + a_frame_drag;
+            }
+        }
+        return accel;
+    }
+
+    // Handle Scenes 1-5 (original logic)
     vec3 toSphere = scene.spherePos - pos; 
     float dist = length(toSphere);
     if (dist < 0.0001) return vec3(0.0); 
@@ -176,21 +266,19 @@ vec3 get_gravity_accel(vec3 pos, vec3 v, SceneConfig scene) {
     float dist3 = dist2 * dist;
     float dist5 = dist3 * dist2;
 
-    vec3 accel = vec3(0.0);
-
     if (cam.metric == 0) {
         accel = toSphere * (scene.sphereRadius * 0.5) / dist3;
     } else if (cam.metric == 1) {
         vec3 h = cross(-toSphere, v);
         accel = toSphere * (1.5 * scene.sphereRadius * dot(h, h)) / dist5;
-            } else {
-                vec3 r_vec = -toSphere; 
-                vec3 h = cross(r_vec, v);
-                vec3 a_schwarzschild = -r_vec * (1.5 * scene.sphereRadius * dot(h, h)) / dist5;
-                vec3 spin_vec = KERR_SPIN_AXIS * scene.sphereRadius * cam.spin_speed;
-                vec3 H = (2.0 / dist5) * (3.0 * r_vec * dot(spin_vec, r_vec) - spin_vec * dist2);
-                vec3 a_frame_drag = -cross(v, H);
-                accel = a_schwarzschild + a_frame_drag;
+    } else {
+        vec3 r_vec = -toSphere; 
+        vec3 h = cross(r_vec, v);
+        vec3 a_schwarzschild = -r_vec * (1.5 * scene.sphereRadius * dot(h, h)) / dist5;
+        vec3 spin_vec = KERR_SPIN_AXIS * scene.sphereRadius * cam.spin_speed;
+        vec3 H = (2.0 / dist5) * (3.0 * r_vec * dot(spin_vec, r_vec) - spin_vec * dist2);
+        vec3 a_frame_drag = -cross(v, H);
+        accel = a_schwarzschild + a_frame_drag;
     }
      
     if (scene.sphere2Radius > 0.0) {
@@ -206,14 +294,14 @@ vec3 get_gravity_accel(vec3 pos, vec3 v, SceneConfig scene) {
             } else if (cam.metric == 1) {
                 vec3 h2 = cross(-toSphere2, v);
                 accel += toSphere2 * (1.5 * scene.sphere2Radius * dot(h2, h2)) / d2_5;
-                } else {
-                    vec3 r_vec2 = -toSphere2; 
-                    vec3 h2 = cross(r_vec2, v);
-                    vec3 a_schwarzschild2 = -r_vec2 * (1.5 * scene.sphere2Radius * dot(h2, h2)) / d2_5;
-                    vec3 spin_vec2 = KERR_SPIN_AXIS * scene.sphere2Radius * cam.spin_speed;
-                    vec3 H2 = (2.0 / d2_5) * (3.0 * r_vec2 * dot(spin_vec2, r_vec2) - spin_vec2 * d2_2);
-                    vec3 a_frame_drag2 = -cross(v, H2);
-                    accel += a_schwarzschild2 + a_frame_drag2;
+            } else {
+                vec3 r_vec2 = -toSphere2; 
+                vec3 h2 = cross(r_vec2, v);
+                vec3 a_schwarzschild2 = -r_vec2 * (1.5 * scene.sphere2Radius * dot(h2, h2)) / d2_5;
+                vec3 spin_vec2 = KERR_SPIN_AXIS * scene.sphere2Radius * cam.spin_speed;
+                vec3 H2 = (2.0 / d2_5) * (3.0 * r_vec2 * dot(spin_vec2, r_vec2) - spin_vec2 * d2_2);
+                vec3 a_frame_drag2 = -cross(v, H2);
+                accel += a_schwarzschild2 + a_frame_drag2;
             }
         }
     }
@@ -306,17 +394,30 @@ void main() {
                 hitSomething = true;
                 break; 
             }
-               
-            if (length(scene.spherePos - r.origin) < scene.sphereRadius) {
-                finalColor = vec3(0.0);
-                hitSomething = true;
-                break;
-            }
-               
-            if (scene.sphere2Radius > 0.0 && length(scene.sphere2Pos - r.origin) < scene.sphere2Radius) {
-                finalColor = vec3(0.0);
-                hitSomething = true;
-                break;
+
+            // Scene 6 Solar System collision handling
+            if (cam.current_scene == 6) {
+                for (int i = 0; i < 10; i++) {
+                    if (cam.bodies[i].w > 0.0 && length(cam.bodies[i].xyz - r.origin) < cam.bodies[i].w) {
+                        finalColor = vec3(0.0);
+                        hitSomething = true;
+                        break;
+                    }
+                }
+                if (hitSomething) break;
+            } else {
+                // Original Scenes 1-5 collision handling
+                if (length(scene.spherePos - r.origin) < scene.sphereRadius) {
+                    finalColor = vec3(0.0);
+                    hitSomething = true;
+                    break;
+                }
+                   
+                if (scene.sphere2Radius > 0.0 && length(scene.sphere2Pos - r.origin) < scene.sphere2Radius) {
+                    finalColor = vec3(0.0);
+                    hitSomething = true;
+                    break;
+                }
             }
                
             if (cam.method_euler) 
