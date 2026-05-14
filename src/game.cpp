@@ -179,7 +179,7 @@ public:
     std::vector<CameraPreset> defaultCameras = {
         {"Front", glm::vec3(0.0f, 0.0f, 666.0f), 0.0f, 180.0f},
         {"Periferic", glm::vec3(-140.0f, 0.0f, -360.0f), 0.0f, 66.0f},
-        {"Above", glm::vec3(0.0f, 180.0f, -150.0f), 90.0f, 0.0f},
+        {"Above", glm::vec3(0.0f, 180.0f, -150.0f), -90.0f, 0.0f},
         {"Diagonal", glm::vec3(-70.0f, 70.0f, -400.0f), 15.0f, 15.0f},
         {"Tangent", glm::vec3(0.0f, 0.0f, -180.0f), 0.0f, 90.0f},
         {"LookAway", glm::vec3(0.0f, 0.0f, -200.0f), 0.0f, 180.0f}
@@ -208,6 +208,7 @@ class Game
 
 public:
     glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, 666.0f);
+    glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
     float yaw = -90.0f;
     float pitch = 0.0f;
 
@@ -271,7 +272,6 @@ private:
     std::vector<VkBuffer> cameraUniformBuffers;
     std::vector<VkDeviceMemory> cameraUniformBuffersMemory;
     void* cameraBuffersMapped[MAX_FRAMES_IN_FLIGHT]; 
-    glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
     glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
     float cameraSpeed = 2.5f;
     bool firstMouse = true;
@@ -1156,6 +1156,13 @@ private:
 
             sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
             destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        }
+        else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_GENERAL) {
+            barrier.srcAccessMask = 0;
+            barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+
+            sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+            destinationStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
         }
         else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
         {
