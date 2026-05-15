@@ -26,6 +26,7 @@
 #include <limits>
 #include <algorithm>
 #include <thread>
+#include <iomanip>
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
 #include <filesystem> 
@@ -50,7 +51,6 @@ struct Resolution {
 
 const std::vector<Resolution> RESOLUTION_PRESETS = {
     { 256, 144, "144p" },
-    { 455, 256, "256p" },
     { 853, 480, "480p" },
     { 1280, 720, "720p" },
     { 1920, 1080, "1080p" }
@@ -145,10 +145,17 @@ struct SpinSpeedPreset {
 
 class BenchmarkAutomator {
 public:
+    enum class Phase {
+        Baseline,
+        Full
+    };
+
+    Phase currentPhase = Phase::Baseline;
+    
     int resIndex = 0;
     int metricIndex = 0;
     int integratorIndex = 0;
-    int sceneIndex = 1;
+    int sceneIndex = 6;// 1;
      
     int camIndex = 0;
     int stepIndex = 0;
@@ -158,8 +165,9 @@ public:
     float timer = 0.0f;
     int frameCount = 0;
     bool isFinished = false;
+    bool baselineFinished = false;
      
-    const float benchmarkDurationPerConfig = 0.1f;
+    const float benchmarkDurationPerConfig = 4.0f;
      
     std::vector<StepSizePreset> stepPresets = {
         {"SmallStep", 1.0f}, {"MediumStep", 52.0f}, {"BigStep", 260.0f}
@@ -177,21 +185,21 @@ public:
     };
      
     std::vector<CameraPreset> defaultCameras = {
-        {"Front", glm::vec3(0.0f, 0.0f, 666.0f), 0.0f, 180.0f},
-        {"Periferic", glm::vec3(-140.0f, 0.0f, -360.0f), 0.0f, 66.0f},
-        {"Above", glm::vec3(0.0f, 180.0f, -150.0f), -90.0f, 0.0f},
-        {"Diagonal", glm::vec3(-70.0f, 70.0f, -400.0f), 15.0f, 15.0f},
-        {"Tangent", glm::vec3(0.0f, 0.0f, -180.0f), 0.0f, 90.0f},
-        {"LookAway", glm::vec3(0.0f, 0.0f, -200.0f), 0.0f, 180.0f}
+        {"Front",     glm::vec3(0.0f, 0.0f, 666.0f),     0.0f,  -90.0f}, 
+        {"Periferic", glm::vec3(-140.0f, 0.0f, -360.0f), 0.0f,   24.0f}, 
+        {"Above",     glm::vec3(0.0f, 180.0f, -150.0f),  90.0f,  90.0f}, 
+        {"Diagonal",  glm::vec3(-70.0f, 70.0f, -400.0f),-15.0f,  -75.0f}, 
+        {"Tangent",   glm::vec3(0.0f, 0.0f, -180.0f),    0.0f,    0.0f}, 
+        {"LookAway",  glm::vec3(0.0f, 0.0f, -200.0f),    0.0f,  -90.0f} 
     };
 
     std::vector<CameraPreset> scene6Cameras = {
-        {"CamPos1", glm::vec3(83.0f, -4.0f, 30.0f), 0.0f, 240.0f},
-        {"CamPos2", glm::vec3(100.0f, 0.0f, 235.0f), 0.0f, 170.0f},
-        {"CamPos3", glm::vec3(300.0f, 0.0f, 800.0f), 0.0f, 116.0f},
-        {"CamPos4", glm::vec3(150.0f, -200.0f, -100.0f), -60.0f, -20.0f},
-        {"CamPos5", glm::vec3(125.0f, -2.0f, -30.0f), 1.0f, 25.0f},
-        {"CamPos6", glm::vec3(100.0f, 2.2f, 45.0f), -0.3f, 90.0f}
+        {"CamPos1", glm::vec3(83.0f, -4.0f, 30.0f),       0.0f,  -90.0f},
+        {"CamPos2", glm::vec3(83.0f, -4.0f, 30.0f),       0.0f,  -90.0f},
+        {"CamPos3", glm::vec3(300.0f, 0.0f, 800.0f),      0.0f,  -26.0f}, 
+        {"CamPos4", glm::vec3(150.0f, -200.0f, -100.0f), 60.0f,  110.0f}, 
+        {"CamPos5", glm::vec3(125.0f, -2.0f, -30.0f),    -1.0f,   65.0f}, 
+        {"CamPos6", glm::vec3(100.0f, 2.2f, 45.0f),       0.3f,    0.0f} 
     };
 
     void update(float deltaTime, Game* game);
@@ -199,8 +207,11 @@ public:
 private:
     void applyConfig(Game* game);
     void advance(Game* game);
+    void advanceBaseline(Game* game);
     void saveBenchmark(float fps, Game* game);
+    void saveBaselineScreenshot(float fps, Game* game);
     void saveToCSV(float fps, const std::string& imagePath);
+    void saveBaselineToCSV(float fps, const std::string& imagePath);
 };
 
 class Game
@@ -286,7 +297,7 @@ private:
     int maxSteps = 1000;
     public:int metric = 0; // 0 - Newton || 1 - Schwarzschild || 2 - Kerr
     float spinSpeed = 0.5f;
-    int currentScene = 1;
+    int currentScene = 0;
     bool isInputActive = false;
     bool showFPS = false;
     float fpsUpdateTimer = 0.0f;
@@ -994,17 +1005,10 @@ private:
 
     #pragma region CreateTextureImage()
     void createTextureImage()
-    {
-        // Vulkan cubemap layer order (standard):
-        // Layer 0: +X (Right)
-        // Layer 1: -X (Left)  
-        // Layer 2: +Y (Up)
-        // Layer 3: -Y (Down)
-        // Layer 4: +Z (Front)
-        // Layer 5: -Z (Back)
+    { 
         std::vector<std::string> skyboxFaces = {
-            "textures/Left.png",    // Swap: Left goes to +X position
-            "textures/Right.png",   // Swap: Right goes to -X position
+            "textures/Left.png",    // +X
+            "textures/Right.png",   // -X
             "textures/Up.png",      // +Y
             "textures/Down.png",    // -Y
             "textures/Front.png",   // +Z
@@ -2051,6 +2055,8 @@ private:
 
         if (glfwGetKey(window, GLFW_KEY_T) == GLFW_PRESS)
         {
+            std::cout << cameraPos.x << " " << cameraPos.y << " " << cameraPos.z << " " << pitch << " " << yaw << std::endl;
+
             if (!mouseControlEnabled)
             {
                 mouseControlEnabled = true;
@@ -2156,22 +2162,17 @@ private:
         }
         if (glfwGetKey(window, GLFW_KEY_F2) == GLFW_PRESS)
         {
-            setResolution(1); // 256p
+            setResolution(1); // 480p
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
         if (glfwGetKey(window, GLFW_KEY_F3) == GLFW_PRESS)
         {
-            setResolution(2); // 480p
+            setResolution(2); // 720p
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
         if (glfwGetKey(window, GLFW_KEY_F4) == GLFW_PRESS)
         {
-            setResolution(3); // 720p
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
-        if (glfwGetKey(window, GLFW_KEY_F5) == GLFW_PRESS)
-        {
-            setResolution(4); // 1080p
+            setResolution(3); // 1080p
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
     }
@@ -2224,6 +2225,8 @@ private:
     {
         BenchmarkAutomator automator;
 
+        setResolution(0);
+
         while (!glfwWindowShouldClose(window))
         {  
             float currentTime = static_cast<float>(glfwGetTime());
@@ -2232,7 +2235,7 @@ private:
 
             glfwPollEvents();
 
-            automator.update(deltaTime, this);
+            //automator.update(deltaTime, this);
 
             processInput();
             updateFPS();
@@ -2593,15 +2596,15 @@ private:
         float viewport_height = 1.0f;
         float viewport_width = aspect_ratio * viewport_height;
         float focal_length = 1.0f;
-         
-        glm::vec3 w = glm::normalize(-cameraFront); 
+          
+        glm::vec3 w = glm::normalize(cameraFront); 
         glm::vec3 u = glm::normalize(glm::cross(cameraUp, w)); 
         glm::vec3 v = glm::cross(w, u);
-         
+
         glm::vec3 horizontal = viewport_width * u;
         glm::vec3 vertical = viewport_height * v;
          
-        glm::vec3 lower_left_corner = cameraPos - (horizontal / 2.0f) - (vertical / 2.0f) - (w * focal_length);
+        glm::vec3 lower_left_corner = cameraPos - (horizontal / 2.0f) - (vertical / 2.0f) + (w * focal_length);
          
         CameraUBO ubo{};
         ubo.origin = cameraPos;
@@ -2808,23 +2811,115 @@ private:
 
 inline void BenchmarkAutomator::update(float deltaTime, Game* game) {
     if (isFinished) return;
+     
+    if (currentPhase == Phase::Baseline && !baselineFinished) {
+        if (timer == 0.0f && frameCount == 0) {
+            game->metric = 0;
+            game->method = true;
+            relativisticViewEnabled = false;
 
-    if (timer == 0.0f && frameCount == 0) {
-        applyConfig(game);
+            CameraPreset camPreset = defaultCameras[camIndex];
+            game->cameraPos = camPreset.position;
+            game->pitch = camPreset.pitch;
+            game->yaw = camPreset.yaw;
+
+            glm::vec3 front;
+            front.x = cos(glm::radians(game->yaw)) * cos(glm::radians(game->pitch));
+            front.y = sin(glm::radians(game->pitch));
+            front.z = sin(glm::radians(game->yaw)) * cos(glm::radians(game->pitch));
+            game->cameraFront = glm::normalize(front);
+
+            std::cout << "Baseline: Camera " << (camIndex + 1) << " / " << defaultCameras.size()
+                << " at resolution " << RESOLUTION_PRESETS[resIndex].height << "p" << std::endl;
+        }
+
+        timer += deltaTime;
+        frameCount++;
+
+        if (timer >= benchmarkDurationPerConfig) {
+            float avgFps = frameCount / timer;
+            saveBaselineScreenshot(avgFps, game);
+            advanceBaseline(game);
+            timer = 0.0f;
+            frameCount = 0;
+        }
+        return;
+    }
+     
+    if (currentPhase == Phase::Full) {
+        if (timer == 0.0f && frameCount == 0) {
+            relativisticViewEnabled = true;
+            applyConfig(game);
+        }
+
+        timer += deltaTime;
+        frameCount++;
+
+        if (timer >= benchmarkDurationPerConfig) {
+            float avgFps = frameCount / timer;
+            saveBenchmark(avgFps, game);
+            advance(game);
+            timer = 0.0f;
+            frameCount = 0;
+        }
+    }
+}
+
+inline void BenchmarkAutomator::advanceBaseline(Game* game) {
+    camIndex++;
+
+    if (camIndex >= defaultCameras.size()) {
+        camIndex = 0;
+        game->setResolution(++resIndex);
+
+        if (resIndex >= RESOLUTION_PRESETS.size()) {
+            baselineFinished = true;
+            currentPhase = Phase::Full;
+            resIndex = 0;
+            metricIndex = 0;
+            integratorIndex = 0;
+            sceneIndex = 6;
+            camIndex = 0;
+            stepIndex = 0;
+            gravIndex = 0;
+            spinIndex = 0;
+            std::cout << ">>> BASELINE PHASE CONCLUDED <<<" << std::endl;
+            std::cout << ">>> STARTING FULL BENCHMARK (RELATIVISTIC) <<<" << std::endl;
+        }
+    }
+}
+
+inline void BenchmarkAutomator::saveBaselineScreenshot(float fps, Game* game) {
+    CameraPreset camPreset = defaultCameras[camIndex];
+
+    char filename[512];
+    sprintf(filename, "Benchmarks/BASELINE_%.1fFPS_NonRelativistic_S0_%s_%dp.png",
+        fps, camPreset.name.c_str(), RESOLUTION_PRESETS[resIndex].height);
+
+    game->saveScreenshot(filename);
+    saveBaselineToCSV(fps, filename);
+}
+
+inline void BenchmarkAutomator::saveBaselineToCSV(float fps, const std::string& imagePath) {
+    CameraPreset camPreset = defaultCameras[camIndex];
+
+    std::string csvPath = "Benchmarks/Baseline_Results.csv";
+    bool fileExists = fs::exists(csvPath);
+
+    std::ofstream csvFile;
+    csvFile.open(csvPath, std::ios_base::app);
+
+    if (!fileExists) {
+        csvFile << "Resolution_W,Resolution_H,Camera_Name,Average_FPS,Image_Path\n";
     }
 
-    timer += deltaTime;
-    frameCount++;
+    csvFile << RESOLUTION_PRESETS[resIndex].width << ","
+        << RESOLUTION_PRESETS[resIndex].height << ","
+        << camPreset.name << ","
+        << std::fixed << std::setprecision(2) << fps << ","
+        << imagePath << "\n";
 
-    if (timer >= benchmarkDurationPerConfig) {
-        float avgFps = frameCount / timer;
-
-        saveBenchmark(avgFps, game);
-        advance(game);
-
-        timer = 0.0f;
-        frameCount = 0;
-    }
+    csvFile.close();
 }
 
 inline void BenchmarkAutomator::applyConfig(Game* game) {
