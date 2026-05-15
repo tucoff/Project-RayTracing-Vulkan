@@ -112,9 +112,7 @@ struct CameraUBO {
     alignas(4) int metric;
     alignas(4) float spin_speed;
     alignas(4) int current_scene;
-    alignas(4) float gravity_multiplier;
-    alignas(16) glm::vec4 bodies[10];      // xyz = position, w = radius
-    alignas(16) glm::vec4 bodyMasses[10];  // x = mass (vec4 used to respect std140 alignment rules)
+    alignas(4) float gravity_multiplier; 
 };
 
 #pragma endregion
@@ -195,7 +193,7 @@ public:
 
     std::vector<CameraPreset> scene6Cameras = {
         {"CamPos1", glm::vec3(83.0f, -4.0f, 30.0f),       0.0f,  -90.0f},
-        {"CamPos2", glm::vec3(83.0f, -4.0f, 30.0f),       0.0f,  -90.0f},
+        {"CamPos2", glm::vec3(100.0f, 0.0f, 235.0f),      0.0f,  -90.0f},
         {"CamPos3", glm::vec3(300.0f, 0.0f, 800.0f),      0.0f,  -26.0f}, 
         {"CamPos4", glm::vec3(150.0f, -200.0f, -100.0f), 60.0f,  110.0f}, 
         {"CamPos5", glm::vec3(125.0f, -2.0f, -30.0f),    -1.0f,   65.0f}, 
@@ -1283,7 +1281,7 @@ private:
         barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        barrier.subresourceRange.baseArrayLayer = 0;
+        barrier.subresourceRange.baseMipLevel = 0;
         barrier.subresourceRange.layerCount = 1;
         barrier.subresourceRange.levelCount = 1;
 
@@ -2055,7 +2053,8 @@ private:
 
         if (glfwGetKey(window, GLFW_KEY_T) == GLFW_PRESS)
         {
-            std::cout << cameraPos.x << " " << cameraPos.y << " " << cameraPos.z << " " << pitch << " " << yaw << std::endl;
+            std::cout << "Camera Position: " << cameraPos.x << " " << cameraPos.y << " " << cameraPos.z << std::endl;
+            std::cout << "Camera Rotation (Pitch, Yaw): " << pitch << " " << yaw << std::endl;
 
             if (!mouseControlEnabled)
             {
@@ -2235,7 +2234,7 @@ private:
 
             glfwPollEvents();
 
-            //automator.update(deltaTime, this);
+            automator.update(deltaTime, this);
 
             processInput();
             updateFPS();
@@ -2619,47 +2618,6 @@ private:
         ubo.spin_speed = spinSpeed;
         ubo.current_scene = currentScene;
         ubo.gravity_multiplier = gravityMultiplier;
-
-        for (int i = 0; i < 10; i++) 
-        {
-            ubo.bodies[i] = glm::vec4(0.0f);
-            ubo.bodyMasses[i] = glm::vec4(0.0f);
-        }
-
-        if (currentScene == 6) 
-        {
-            float systemTime = static_cast<float>(glfwGetTime()) * 0.0f;
-            float baseRadii[] = { 5.0f, 0.3f, 0.7f, 0.8f, 0.2f, 0.4f, 2.5f, 2.0f, 1.5f, 1.4f };
-            float orbitDistances[] = { 0.0f, 10.0f, 18.0f, 28.0f, 2.5f, 40.0f, 65.0f, 95.0f, 125.0f, 150.0f };
-            float orbitSpeeds[] = { 0.0f, 4.1f, 1.6f, 1.0f, 13.3f, 0.5f, 0.08f, 0.03f, 0.01f, 0.005f };
-            float massPercents[] = { 1.0f, 0.005f, 0.008f, 0.01f, 0.001f, 0.005f, 0.1f, 0.08f, 0.04f, 0.03f };
-
-            glm::vec3 sunPos(0.0f, 0.0f, -150.0f);
-            float baseMass = 1.989e30f;
-
-            for (int i = 0; i < 10; i++) {
-                glm::vec3 bodyPos;
-                
-                if (i == 0) { 
-                    bodyPos = sunPos;
-                } else if (i == 4) { 
-                    float earthX = sunPos.x + cos(systemTime * orbitSpeeds[3]) * orbitDistances[3];
-                    float earthZ = sunPos.z + sin(systemTime * orbitSpeeds[3]) * orbitDistances[3];
-                    glm::vec3 earthPos(earthX, 0.0f, earthZ);
-                    
-                    bodyPos.x = earthPos.x + cos(systemTime * orbitSpeeds[i]) * orbitDistances[i];
-                    bodyPos.y = earthPos.y;
-                    bodyPos.z = earthPos.z + sin(systemTime * orbitSpeeds[i]) * orbitDistances[i];
-                } else { 
-                    bodyPos.x = sunPos.x + cos(systemTime * orbitSpeeds[i]) * orbitDistances[i];
-                    bodyPos.y = sunPos.y;
-                    bodyPos.z = sunPos.z + sin(systemTime * orbitSpeeds[i]) * orbitDistances[i];
-                }
-
-                ubo.bodies[i] = glm::vec4(bodyPos, baseRadii[i]);
-                ubo.bodyMasses[i] = glm::vec4(baseMass * massPercents[i], 0.0f, 0.0f, 0.0f);
-            }
-        }
          
         memcpy(cameraBuffersMapped[currentImage], &ubo, sizeof(ubo));
     }
@@ -2883,8 +2841,8 @@ inline void BenchmarkAutomator::advanceBaseline(Game* game) {
             stepIndex = 0;
             gravIndex = 0;
             spinIndex = 0;
-            std::cout << ">>> BASELINE PHASE CONCLUDED <<<" << std::endl;
-            std::cout << ">>> STARTING FULL BENCHMARK (RELATIVISTIC) <<<" << std::endl;
+            std::cout << ">>> BASELINE PHASE CONCLUÍDO <<<" << std::endl;
+            std::cout << ">>> INICIANDO BENCHMARK COMPLETO (RELATIVÍSTICO) <<<" << std::endl;
         }
     }
 }

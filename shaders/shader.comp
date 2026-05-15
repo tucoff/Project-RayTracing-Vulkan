@@ -17,9 +17,7 @@ layout(binding = 1) uniform CameraUBO
     int metric;
     float spin_speed;
     int current_scene;
-    float gravity_multiplier;
-    vec4 bodies[10]; 
-    vec4 bodyMasses[10]; 
+    float gravity_multiplier; 
 } cam;
 
 layout(binding = 2) uniform samplerCube skyboxSampler;
@@ -50,7 +48,33 @@ struct HitResult
     vec3 color;
     int bodyIndex;
 };
- 
+  
+const vec4 SCENE6_BODIES[10] = vec4[](
+    vec4(0.0, 0.0, 0.0, 20.0),      // 0: Sun
+    vec4(30.0, 0.0, 0.0, 2.0),      // 1: Mercury
+    vec4(50.0, 5.0, 10.0, 3.5),     // 2: Venus
+    vec4(70.0, -3.0, 15.0, 3.7),    // 3: Earth
+    vec4(76.0, -3.0, 15.0, 1.0),    // 4: Moon
+    vec4(90.0, 4.0, 20.0, 2.8),     // 5: Mars
+    vec4(130.0, -8.0, 35.0, 12.0),  // 6: Jupiter
+    vec4(170.0, 6.0, 50.0, 10.5),   // 7: Saturn
+    vec4(220.0, -5.0, 70.0, 8.0),   // 8: Uranus
+    vec4(270.0, 7.0, 90.0, 7.8)     // 9: Neptune
+);
+
+const float SCENE6_MASSES[10] = float[](
+    1.989e30,  // 0: Sun
+    3.285e23,  // 1: Mercury
+    4.867e24,  // 2: Venus
+    5.972e24,  // 3: Earth
+    7.342e22,  // 4: Moon
+    6.417e23,  // 5: Mars
+    1.898e27,  // 6: Jupiter
+    5.683e26,  // 7: Saturn
+    8.681e25,  // 8: Uranus
+    1.024e26   // 9: Neptune
+);
+
 const float G_REAL = 6.67430e-11;
 const float C_REAL = 299792458.0;
 const float SOLAR_MASS = 1.989e30;
@@ -94,7 +118,7 @@ SceneConfig load_scene_config() {
         config.sphere2Radius = RS_KM;
         config.sphere2Mass = MASS;
         config.useUniverseSkybox = true;
-    } else if (cam.current_scene == 6) { 
+    } else if (cam.current_scene == 6) {  
         config.useUniverseSkybox = true;
     }
     return config;
@@ -150,25 +174,25 @@ HitResult calculate_ray_collision(Ray r, SceneConfig scene) {
         for (int i = 0; i < 10; i++) {
 
             float t_sphere = 1e10;
-            if (hit_sphere(cam.bodies[i].xyz, cam.bodies[i].w, r, t_sphere)) {
+            if (hit_sphere(SCENE6_BODIES[i].xyz, SCENE6_BODIES[i].w, r, t_sphere)) {
                 if (t_sphere < closestHit.dst) {
                     closestHit.didHit = true;
                     closestHit.dst = t_sphere;
                     closestHit.bodyIndex = i;
                     vec3 hitPoint = r.origin + r.direction * t_sphere;
-                    vec3 normal = normalize(hitPoint - cam.bodies[i].xyz);
+                    vec3 normal = normalize(hitPoint - SCENE6_BODIES[i].xyz);
                     vec2 uv = get_spherical_uv(normal);
                     
                     closestHit.color = texture(planetTexs[i], uv).rgb;
                 }
             }
         } 
-        if (cam.bodies[7].w > 0.0) {
+        if (SCENE6_BODIES[7].w > 0.0) {
             float t_ring = 1e10;
-            float ringInner = cam.bodies[7].w * 1.5;
-            float ringOuter = cam.bodies[7].w * 2.5;
+            float ringInner = SCENE6_BODIES[7].w * 1.5;
+            float ringOuter = SCENE6_BODIES[7].w * 2.5;
 
-            if (hit_ring(cam.bodies[7].xyz, normalize(vec3(0.2, 1.0, 0.2)), ringInner, ringOuter, r, t_ring)) {
+            if (hit_ring(SCENE6_BODIES[7].xyz, normalize(vec3(0.2, 1.0, 0.2)), ringInner, ringOuter, r, t_ring)) {
                 if (t_ring < closestHit.dst) {
                     closestHit.didHit = true;
                     closestHit.dst = t_ring;
@@ -207,30 +231,40 @@ HitResult calculate_ray_collision(Ray r, SceneConfig scene) {
 }
  
 vec3 get_gravity_accel(vec3 pos, vec3 v, SceneConfig scene) {
+    
     vec3 accel = vec3(0.0);
+
     if (cam.current_scene == 6) {
+    
         float spinMults[10] = float[](0.039, 0.017, -0.004, 1.0, 0.036, 0.97, 2.44, 2.22, -1.39, 1.49);
+        
         for (int i = 0; i < 10; i++) {
-            if (cam.bodyMasses[i].x <= 0.0) continue;
-            vec3 toBody = cam.bodies[i].xyz - pos;
+        
+            if (SCENE6_MASSES[i].x <= 0.0) continue;
+            
+            vec3 toBody = SCENE6_BODIES[i].xyz - pos;
             float r_dist = length(toBody);
             if (r_dist < 0.0001) continue;
-            float rs_km_base = (2.0 * G_REAL * cam.bodyMasses[i].x) / (C_REAL * C_REAL) / 1000.0;
-            float rs_km = rs_km_base * cam.gravity_multiplier;
+             
+            float mass_ratio = SCENE6_MASSES[i].x / 1.989e30; 
+             
+            float rs_visual = mass_ratio * cam.gravity_multiplier * 5.0;
+
             float r_dist2 = r_dist * r_dist;
             float r_dist3 = r_dist2 * r_dist;
             float r_dist5 = r_dist3 * r_dist2;
+
             if (cam.metric == 0) { 
-                accel += toBody * (rs_km * 0.5) / r_dist3;
+                accel += toBody * (rs_visual * 0.5) / r_dist3;
             } else if (cam.metric == 1) { 
                 vec3 h = cross(-toBody, v);
-                accel += toBody * (1.5 * rs_km * dot(h, h)) / r_dist5;
+                accel += toBody * (1.5 * rs_visual * dot(h, h)) / r_dist5;
             } else { 
                 vec3 r_vec = -toBody;
                 vec3 h = cross(r_vec, v);
-                vec3 a_schwarzschild = -r_vec * (1.5 * rs_km * dot(h, h)) / r_dist5;
+                vec3 a_schwarzschild = -r_vec * (1.5 * rs_visual * dot(h, h)) / r_dist5;
                 float currentSpin = cam.spin_speed * spinMults[i];
-                vec3 spin_vec = KERR_SPIN_AXIS * rs_km * currentSpin;
+                vec3 spin_vec = KERR_SPIN_AXIS * rs_visual * currentSpin;
                 vec3 H = (2.0 / r_dist5) * (3.0 * r_vec * dot(spin_vec, r_vec) - spin_vec * r_dist2);
                 vec3 a_frame_drag = -cross(v, H);
                 accel += a_schwarzschild + a_frame_drag;
@@ -341,8 +375,7 @@ void main() {
     float u = float(pixel_coords.x) / float(screen_size.x - 1);
     float v = float(pixel_coords.y) / float(screen_size.y - 1);
     
-    v = 1.0 - v;
-    //u = 1.0 - u;
+    v = 1.0 - v; 
 
     Ray r;
     r.origin = cam.origin;
